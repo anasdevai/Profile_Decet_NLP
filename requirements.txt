@@ -1,0 +1,15 @@
+spacy
+textstat
+pronouncing
+langdetect
+langchain
+langchain-google-genai
+langchain-community
+qdrant-client
+sentence-transformers
+fastapi
+uvicorn
+sqlalchemy
+# redis
+# psycopg2-binary
+python-dotenv

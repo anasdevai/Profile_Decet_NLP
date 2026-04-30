@@ -1,0 +1,9 @@
+[project]
+name = "profiles"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pypdf>=6.10.2",
+    "python-docx>=1.2.0",
+    "streamlit==1.41.1",
+]
