@@ -1,4 +1,5 @@
-﻿spacy
+﻿numpy<2.0.0
+spacy>=3.7.0,<3.8.0
 textstat
 pronouncing
 langdetect
@@ -10,8 +11,6 @@ sentence-transformers
 fastapi
 uvicorn
 sqlalchemy
-# redis
-# psycopg2-binary
 python-dotenv
 streamlit
 python-docx
