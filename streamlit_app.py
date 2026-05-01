@@ -280,10 +280,12 @@ def local_fallback_transform(text: str, mode: str, profile: dict | None = None) 
             f"{cleaned}\n\nAdditional detail: clarify responsibilities, expected records, "
             "review points, and completion criteria while preserving the detected style."
         )
-    if mode == "generate":
+    if mode in ["generate", "create_new"]:
         return (
-            "Draft generated from the detected style profile:\n\n"
-            f"{cleaned}\n\nMaintain the same genre, tone, structure, and terminology shown in the source profile."
+            "### [LOCAL DRAFT] New Section Generated\n\n"
+            f"Based on instruction: {cleaned}\n\n"
+            "Style Note: This draft follows the detected profile's genre and tone. "
+            "Please use the Hugging Face Qwen toggle for high-fidelity reasoning-based generation."
         )
     if mode == "rewrite":
         return cleaned

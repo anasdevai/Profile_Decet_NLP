@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import json
 from huggingface_hub import InferenceClient
@@ -237,7 +237,7 @@ Reference texts for style context:
 2. {reference_doc_2}
 
 Section: {section_title}
-Original Content:
+{input_label}:
 {chunk_text}
 
 Produce output for mode "{mode}" following all hard constraints above.
@@ -256,8 +256,10 @@ def rewrite_chunk(chunk_text: str, section_title: str, style_profile: dict, simi
 
     # Split system_prompt out of the user prompt so it goes into the system role.
     # The REWRITE_PROMPT_TEMPLATE user payload no longer repeats the system block.
+    input_label = "Instruction" if mode in ["create_new", "generate"] else "Original Content"
     user_prompt = REWRITE_PROMPT_TEMPLATE.format(
         system_prompt="(See system message above.)",
+        input_label=input_label,
         mode=mode,
         genre=dynamic.get("genre", "general"),
         tone=dynamic.get("tone", "neutral"),
