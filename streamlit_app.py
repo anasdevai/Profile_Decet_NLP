@@ -1,4 +1,4 @@
-﻿import io
+import io
 import json
 import re
 from uuid import uuid4
@@ -577,13 +577,16 @@ def render_nlp_output(profile: dict) -> None:
 
 
 st.markdown("<h1 class='gradient-text'>Style Detection & Rewriting Engine 🪄</h1>", unsafe_allow_html=True)
-status = llm_status()
-thinking = status.get("thinking_enabled", False)
-thinking_tag = " | Thinking: ON (Qwen3)" if thinking else ""
-st.caption(
-    f"LLM: {'ready' if status['llm_client_initialized'] else 'not configured'} | "
-    f"Model: {status['hf_model']} | Provider: {status['hf_provider']}{thinking_tag}"
-)
+try:
+    status = llm_status()
+    thinking = status.get("thinking_enabled", False)
+    thinking_tag = " | Thinking: ON (Qwen3)" if thinking else ""
+    st.caption(
+        f"LLM: {'ready' if status['llm_client_initialized'] else 'not configured'} | "
+        f"Model: {status['hf_model']} | Provider: {status['hf_provider']}{thinking_tag}"
+    )
+except Exception as _llm_err:
+    st.caption(f"LLM: not configured | {_llm_err}")
 
 input_mode = st.radio(
     "Input method",
