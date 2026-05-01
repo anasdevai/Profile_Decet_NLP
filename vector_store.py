@@ -1,4 +1,4 @@
-import os
+﻿import os
 import warnings
 from uuid import uuid4
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
@@ -12,8 +12,36 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "Profile")
 
+_qdrant = None
 _embedder_en = None
 _embedder_multi = None
+
+def get_qdrant_client():
+    global _qdrant
+    if _qdrant is None:
+        try:
+            # Use a short timeout for the cloud check to prevent hanging
+            _qdrant = QdrantClient(
+                url=QDRANT_URL, 
+                api_key=QDRANT_API_KEY, 
+                check_compatibility=False,
+                timeout=10
+            )
+            # Try to check existence, if it fails or timeouts, fallback
+            if not _qdrant.collection_exists(collection_name=COLLECTION_NAME):
+                _qdrant.create_collection(
+                    collection_name=COLLECTION_NAME,
+                    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+                )
+        except Exception as e:
+            print(f"Qdrant connection failed, falling back to memory: {e}")
+            _qdrant = QdrantClient(":memory:", check_compatibility=False)
+            if not _qdrant.collection_exists(collection_name=COLLECTION_NAME):
+                _qdrant.create_collection(
+                    collection_name=COLLECTION_NAME,
+                    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+                )
+    return _qdrant
 
 def _init_embedder_en():
     return HuggingFaceBgeEmbeddings(
@@ -37,32 +65,15 @@ def get_embedder(lang_code: str):
         _embedder_en = _init_embedder_en()
     return _embedder_en
 
-# Silence known qdrant compatibility warning noise in Streamlit logs.
+# Silence known qdrant compatibility warning noise.
 warnings.filterwarnings(
     "ignore",
     message="Failed to obtain server version. Unable to check client-server compatibility.*",
     category=UserWarning,
 )
 
-# Initialize Qdrant Client (fallback to in-memory if cloud checks fail)
-try:
-    qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, check_compatibility=False)
-    # Check if collection exists, if not create it
-    if not qdrant.collection_exists(collection_name=COLLECTION_NAME):
-        qdrant.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=384, distance=Distance.COSINE),
-        )
-except Exception as e:
-    # Fallback to in-memory Qdrant for development
-    qdrant = QdrantClient(":memory:", check_compatibility=False)
-    if not qdrant.collection_exists(collection_name=COLLECTION_NAME):
-        qdrant.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=384, distance=Distance.COSINE),
-        )
-
 def ingest_document_chunks(chunks, profile: dict, lang_code: str, doc_name: str, org_id: str):
+    client = get_qdrant_client()
     points = []
     emb = get_embedder(lang_code)
     
@@ -83,10 +94,11 @@ def ingest_document_chunks(chunks, profile: dict, lang_code: str, doc_name: str,
             )
         )
         
-    qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
+    client.upsert(collection_name=COLLECTION_NAME, points=points)
     return [p.id for p in points]
 
 def retrieve_similar_styles(query_text: str, lang_code: str = "en", genre_filter: str = None, top_k: int = 5):
+    client = get_qdrant_client()
     emb = get_embedder(lang_code)
     vector = emb.embed_query(query_text)
     
@@ -101,9 +113,8 @@ def retrieve_similar_styles(query_text: str, lang_code: str = "en", genre_filter
             ]
         )
         
-    # Qdrant client API differs by version. Prefer `search`, fallback to `query_points`.
-    if hasattr(qdrant, "search"):
-        return qdrant.search(
+    if hasattr(client, "search"):
+        return client.search(
             collection_name=COLLECTION_NAME,
             query_vector=vector,
             query_filter=filters,
@@ -111,15 +122,14 @@ def retrieve_similar_styles(query_text: str, lang_code: str = "en", genre_filter
             with_payload=True
         )
 
-    if hasattr(qdrant, "query_points"):
-        query_res = qdrant.query_points(
+    if hasattr(client, "query_points"):
+        query_res = client.query_points(
             collection_name=COLLECTION_NAME,
             query=vector,
             query_filter=filters,
             limit=top_k,
             with_payload=True,
         )
-        # Keep return shape compatible with callers expecting a list of scored points.
         points = getattr(query_res, "points", None)
         if points is not None:
             return points
