@@ -1,8 +1,7 @@
 # Core NLP
 spacy>=3.7.0,<3.8.0
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
 textstat
-pronouncing
 langdetect
 
 # Document parsing

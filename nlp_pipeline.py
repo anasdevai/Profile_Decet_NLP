@@ -1,9 +1,12 @@
-﻿import os
+import os
 import json
 import re
 from langdetect import detect, DetectorFactory
 import textstat
-import pronouncing
+try:
+    import pronouncing
+except ImportError:
+    pronouncing = None
 import spacy
 
 DetectorFactory.seed = 0
