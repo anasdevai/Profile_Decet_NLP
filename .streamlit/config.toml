@@ -1,0 +1,12 @@
+[server]
+address = "127.0.0.1"
+port = 8502
+headless = false
+fileWatcherType = "none"
+runOnSave = false
+
+[runner]
+fastReruns = false
+
+[browser]
+gatherUsageStats = false

@@ -21,6 +21,7 @@ class RewriteRequest(BaseModel):
     doc_id: Optional[str] = None
     org_id: Optional[str] = "default_org"
     mode: str = "improve"
+    debug: bool = False
 
 class FeedbackRequest(BaseModel):
     doc_id: str
@@ -126,16 +127,37 @@ def rewrite_document(req: RewriteRequest, db: Session = Depends(database.get_db)
     )
     
     rewritten_sections = []
+    fallback_count = 0
     for chunk in chunks:
         rewritten = llm_service.rewrite_chunk(
             chunk.content, chunk.section_title, profile, similar_docs, req.mode
         )
+        if rewritten.startswith("[LLM not configured]") or rewritten.startswith("[Rewrite Failed]") or not rewritten.strip():
+            fallback_count += 1
         rewritten_sections.append(f"## {chunk.section_title}\n\n{rewritten}")
-        
-    return {
+
+    response = {
         "doc_id": doc_id,
         "rewritten_text": "\n\n".join(rewritten_sections),
-        "style_profile": profile
+        "style_profile": profile,
+    }
+    if req.debug:
+        response["debug"] = {
+            "mode": req.mode,
+            "chunk_count": len(chunks),
+            "fallback_count": fallback_count,
+            "llm_client_initialized": llm_service.llm is not None,
+            "hf_model": llm_service.HF_MODEL,
+            "hf_provider": llm_service.HF_PROVIDER,
+        }
+    return response
+
+@app.get("/llm-status")
+def llm_status():
+    return {
+        "llm_client_initialized": llm_service.llm is not None,
+        "hf_model": llm_service.HF_MODEL,
+        "hf_provider": llm_service.HF_PROVIDER,
     }
 
 @app.post("/feedback")

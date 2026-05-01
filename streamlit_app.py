@@ -1,7 +1,8 @@
-import io
+﻿import io
 import json
 import re
 from uuid import uuid4
+import os
 
 import streamlit as st
 from docx import Document
@@ -13,6 +14,83 @@ st.set_page_config(
     page_icon="",
     layout="wide",
 )
+
+
+CUSTOM_CSS = """
+<style>
+/* Gradient Title */
+.gradient-text {
+    background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 3rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+}
+
+/* Premium Metric Cards */
+.metric-card {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    backdrop-filter: blur(10px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: rgba(79, 172, 254, 0.4);
+}
+.metric-label {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+.metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #f8fafc;
+    background: linear-gradient(90deg, #f8fafc 0%, #cbd5e1 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Improve button aesthetics */
+div[data-testid="stButton"] button {
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+div[data-testid="stFormSubmitButton"] button p {
+    font-size: 1.1rem;
+}
+
+/* Cleaner Expanders */
+.streamlit-expanderHeader {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+</style>
+"""
+
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+def llm_status() -> dict:
+    import llm_service
+
+    return {
+        "llm_client_initialized": llm_service.llm is not None,
+        "hf_model": llm_service.HF_MODEL,
+        "hf_provider": llm_service.HF_PROVIDER,
+        "hf_token_present": bool(os.getenv("HF_TOKEN")),
+        "thinking_enabled": os.getenv("HF_ENABLE_THINKING", "true").strip().lower() in {"1", "true", "yes"},
+    }
 
 
 def read_uploaded_file(uploaded_file) -> str:
@@ -143,21 +221,21 @@ def build_profile(text: str, use_llm_validation: bool = False) -> dict:
     }
 
 
-def rewrite_text(text: str, profile: dict, mode: str, use_gemini: bool = False) -> str:
+def rewrite_text(text: str, profile: dict, mode: str, use_hf_llm: bool = False) -> str:
     import nlp_pipeline
 
     sop_style = profile.get("features", {}).get("sop_style", {})
     legal_style = profile.get("features", {}).get("legal_style", {})
     is_compliance_doc = sop_style.get("format_score", 0) >= 0.45 or legal_style.get("legalese_score", 0) >= 0.35
 
-    if is_compliance_doc and not use_gemini:
+    if is_compliance_doc and not use_hf_llm:
         return local_fallback_transform(text, mode, profile)
 
     chunks = nlp_pipeline.smart_chunk(text)
     rewritten_sections = []
 
     for chunk in chunks:
-        if use_gemini:
+        if use_hf_llm:
             import llm_service
 
             rewritten = llm_service.rewrite_chunk(
@@ -172,7 +250,10 @@ def rewrite_text(text: str, profile: dict, mode: str, use_gemini: bool = False) 
             rewritten = compliance_precision_postprocess(rewritten, profile)
         else:
             rewritten = local_fallback_transform(chunk.content, mode, profile)
-        rewritten_sections.append(f"## {chunk.section_title}\n\n{rewritten}")
+        if getattr(chunk, "is_generic", chunk.section_title.startswith("Chunk ") or chunk.section_title == "Intro"):
+            rewritten_sections.append(rewritten)
+        else:
+            rewritten_sections.append(f"{chunk.section_title}\n\n{rewritten}")
 
     return "\n\n".join(rewritten_sections)
 
@@ -321,12 +402,31 @@ def local_poetry_transform(text: str, mode: str) -> str:
 
 
 def render_metric_grid(profile: dict) -> None:
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Genre", profile["genre"])
-    col2.metric("Confidence", f"{profile['confidence']:.1%}")
-    col3.metric("Language", profile["language"])
-    col4.metric("Voice", profile["voice"])
-
+    st.markdown("""
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="metric-card">
+            <div class="metric-label">Detected Genre</div>
+            <div class="metric-value">{}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Confidence</div>
+            <div class="metric-value">{:.1%}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Language</div>
+            <div class="metric-value">{}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Voice</div>
+            <div class="metric-value">{}</div>
+        </div>
+    </div>
+    """.format(
+        profile["genre"].upper(), 
+        profile["confidence"], 
+        profile["language"].upper(), 
+        profile["voice"].capitalize()
+    ), unsafe_allow_html=True)
 
 def render_nlp_output(profile: dict) -> None:
     features = profile["features"]
@@ -334,11 +434,7 @@ def render_nlp_output(profile: dict) -> None:
     st.subheader("NLP Output")
     render_metric_grid(profile)
 
-    tab_summary, tab_structure, tab_poetic, tab_sop, tab_legal, tab_scores, tab_chunks, tab_json = st.tabs(
-        ["Summary", "Structure", "Poetic Pattern", "SOP/QMS", "Legal/Firm", "Genre Scores", "Chunks", "JSON"]
-    )
-
-    with tab_summary:
+    with st.expander("Summary", expanded=True):
         left, right = st.columns(2)
         with left:
             st.write("Style rules")
@@ -351,19 +447,23 @@ def render_nlp_output(profile: dict) -> None:
             st.write("POS distribution")
             st.json(features["pos_dist"])
 
-    with tab_structure:
+    with st.expander("Structure"):
         st.json(features["structure"])
         st.write("Modal verbs")
         st.json(features["modal_verbs"])
 
-    with tab_poetic:
+    with st.expander("Poetic Pattern"):
         poetic_style = features.get("poetic_style", {})
         if poetic_style:
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Musicality", poetic_style.get("musicality_score", 0))
-            c2.metric("Figurative Density", poetic_style.get("figurative_density", 0))
-            c3.metric("Compression", poetic_style.get("compression_score", 0))
-            c4.metric("Delivery", poetic_style.get("emotional_delivery", "unknown"))
+            c1.write("Musicality")
+            c1.write(f"**{poetic_style.get('musicality_score', 0)}**")
+            c2.write("Figurative Density")
+            c2.write(f"**{poetic_style.get('figurative_density', 0)}**")
+            c3.write("Compression")
+            c3.write(f"**{poetic_style.get('compression_score', 0)}**")
+            c4.write("Delivery")
+            c4.write(f"**{poetic_style.get('emotional_delivery', 'unknown')}**")
 
             st.write("Rhyme and line pattern")
             st.json(
@@ -388,14 +488,19 @@ def render_nlp_output(profile: dict) -> None:
         else:
             st.info("No poetic pattern features found.")
 
-    with tab_sop:
+    with st.expander("SOP/QMS"):
         sop_style = features.get("sop_style", {})
         if sop_style:
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Format Score", sop_style.get("format_score", 0))
-            c2.metric("Completeness", sop_style.get("completeness_score", 0))
-            c3.metric("Steps", sop_style.get("numbered_step_count", 0))
-            c4.metric("Control Language", sop_style.get("control_language_score", 0))
+            c1.write("Format Score")
+            c1.write(f"**{sop_style.get('format_score', 0)}**")
+            c2.write("Completeness")
+            c2.write(f"**{sop_style.get('completeness_score', 0)}**")
+            c3.write("Steps")
+            c3.write(f"**{sop_style.get('numbered_step_count', 0)}**")
+            c4.write("Control Language")
+            c4.write(f"**{sop_style.get('control_language_score', 0)}**")
+            
             st.write("Detected SOP/QMS pattern")
             st.json(
                 {
@@ -421,14 +526,19 @@ def render_nlp_output(profile: dict) -> None:
         else:
             st.info("No SOP/QMS pattern features found.")
 
-    with tab_legal:
+    with st.expander("Legal/Firm"):
         legal_style = features.get("legal_style", {})
         if legal_style:
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Legalese", legal_style.get("legalese_score", 0))
-            c2.metric("Clause Density", legal_style.get("clause_density", 0))
-            c3.metric("Obligations", legal_style.get("obligation_count", 0))
-            c4.metric("Defined Terms", len(legal_style.get("defined_terms", [])))
+            c1.write("Legalese")
+            c1.write(f"**{legal_style.get('legalese_score', 0)}**")
+            c2.write("Clause Density")
+            c2.write(f"**{legal_style.get('clause_density', 0)}**")
+            c3.write("Obligations")
+            c3.write(f"**{legal_style.get('obligation_count', 0)}**")
+            c4.write("Defined Terms")
+            c4.write(f"**{len(legal_style.get('defined_terms', []))}**")
+            
             st.write("Detected legal/firm pattern")
             st.json(
                 {
@@ -451,33 +561,29 @@ def render_nlp_output(profile: dict) -> None:
         else:
             st.info("No legal/firm pattern features found.")
 
-    with tab_scores:
-        st.bar_chart(profile["all_scores"])
+    with st.expander("Genre Scores"):
+        st.write("All Scores")
+        st.json(profile.get("all_scores", {}))
         st.write("Terminology scores")
         st.json(features["terminology_scores"])
 
-    with tab_chunks:
-        st.dataframe(
-            [
-                {
-                    "Section": chunk["section_title"],
-                    "Type": chunk["section_type"],
-                    "Words": chunk["word_count"],
-                }
-                for chunk in profile["chunks"]
-            ],
-            use_container_width=True,
-        )
-        with st.expander("Preview extracted chunks"):
-            for chunk in profile["chunks"]:
-                st.markdown(f"**{chunk['section_title']}**")
-                st.text(chunk["content"][:1200])
+    with st.expander("Chunks"):
+        for chunk in profile["chunks"]:
+            st.markdown(f"**{chunk['section_title']}** ({chunk['section_type']}, {chunk['word_count']} words)")
+            st.text(chunk["content"][:1200])
 
-    with tab_json:
+    with st.expander("JSON Profile Data"):
         st.code(json.dumps(profile, indent=2, ensure_ascii=False), language="json")
 
 
-st.title("Style Detection & Rewriting Engine")
+st.markdown("<h1 class='gradient-text'>Style Detection & Rewriting Engine 🪄</h1>", unsafe_allow_html=True)
+status = llm_status()
+thinking = status.get("thinking_enabled", False)
+thinking_tag = " | Thinking: ON (Qwen3)" if thinking else ""
+st.caption(
+    f"LLM: {'ready' if status['llm_client_initialized'] else 'not configured'} | "
+    f"Model: {status['hf_model']} | Provider: {status['hf_provider']}{thinking_tag}"
+)
 
 input_mode = st.radio(
     "Input method",
@@ -495,17 +601,17 @@ if input_mode == "Direct paste":
             placeholder="Copy and paste your document text here, then click Analyze Style.",
         )
         use_llm_validation = st.checkbox(
-            "Use Gemini validation during analysis",
+            "Use Hugging Face validation during analysis",
             value=False,
-            help="Keep this off for fast NLP output. Rewriting still uses Gemini.",
+            help="Keep this off for fast NLP output. Rewriting can still use Hugging Face Qwen.",
         )
         analyze_clicked = st.form_submit_button("Analyze Style", type="primary")
     document_text = pasted_text.strip()
 else:
     use_llm_validation = st.checkbox(
-        "Use Gemini validation during analysis",
+        "Use Hugging Face validation during analysis",
         value=False,
-        help="Keep this off for fast NLP output. Rewriting still uses Gemini.",
+        help="Keep this off for fast NLP output. Rewriting can still use Hugging Face Qwen.",
     )
     uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf", "docx"])
     if uploaded_file is not None:
@@ -533,41 +639,89 @@ profile = st.session_state.get("profile")
 stored_text = st.session_state.get("document_text", document_text)
 
 if profile:
-    render_nlp_output(profile)
+    try:
+        render_nlp_output(profile)
+    except Exception as exc:
+        st.error(f"NLP UI rendering issue: {exc}")
+        st.info("Rewrite/Improve/Create remains available below even if NLP visuals fail.")
+elif not document_text:
+    st.info("Paste text or upload a document to begin.")
 
-    st.subheader("Create, Rewrite, or Improve")
-    mode = st.selectbox(
-        "Mode",
-        options=["improve", "rewrite", "expand", "shorten", "generate"],
+if profile:
+    st.divider()
+    st.subheader("Improve, Rewrite, or Create 🛠️")
+    action = st.selectbox(
+        "Feature",
+        options=["Improve", "Rewrite", "Create"],
         index=0,
     )
-    use_gemini_rewrite = st.checkbox(
-        "Use Gemini for rewrite",
+    mode_map = {
+        "Improve": "improve",
+        "Rewrite": "rewrite",
+        "Create": "create_new",
+    }
+    mode = mode_map[action]
+    use_hf_rewrite = st.checkbox(
+        "Use Hugging Face Qwen for rewrite",
         value=False,
-        help="Leave off for fast local output. Turn on when your Gemini quota is available.",
+        help="Leave off for fast local output. Turn on to test remote LLM rewrite.",
     )
 
-    if mode == "generate":
+    if action == "Create":
         generation_source = st.text_area(
             "New content instruction",
             height=140,
-            placeholder="Describe what you want to create in this detected style...",
+            placeholder="Describe what you want to create in this detected SOP/style...",
         )
         source_text = generation_source.strip() or stored_text
     else:
         source_text = stored_text
 
-    if st.button("Run", disabled=not source_text):
+    col_run, col_test = st.columns(2)
+    run_clicked = col_run.button(action, disabled=not source_text)
+    test_improve_clicked = col_test.button("Test improve via HF", disabled=not stored_text)
+
+    if run_clicked:
         with st.spinner(f"Running {mode}..."):
             st.session_state["rewritten_text"] = rewrite_text(
                 source_text,
                 profile,
                 mode,
-                use_gemini_rewrite,
+                use_hf_rewrite,
             )
 
-    rewritten_text = st.session_state.get("rewritten_text")
-    if rewritten_text:
-        st.text_area("Output", value=rewritten_text, height=360)
-elif not document_text:
-    st.info("Paste text or upload a document to begin.")
+    if test_improve_clicked:
+        with st.spinner("Testing improve mode via Hugging Face Qwen..."):
+            improved = rewrite_text(stored_text, profile, "improve", True)
+            st.session_state["rewritten_text"] = improved
+            st.session_state["improve_test_status"] = {
+                "mode": "improve",
+                "llm_client_initialized": status["llm_client_initialized"],
+                "hf_model": status["hf_model"],
+                "hf_provider": status["hf_provider"],
+                "output_len": len(improved or ""),
+                "is_fallback": isinstance(improved, str)
+                and (
+                    improved.startswith("[LLM not configured]")
+                    or improved.startswith("[Rewrite Failed]")
+                    or len(improved.strip()) == 0
+                ),
+            }
+else:
+    st.info("Run `Analyze Style` first to unlock Improve, Rewrite, and Create.")
+
+rewritten_text = st.session_state.get("rewritten_text")
+improve_test_status = st.session_state.get("improve_test_status")
+if improve_test_status:
+    st.write("Improve test status")
+    st.json(improve_test_status)
+if rewritten_text:
+    st.markdown("---")
+    st.subheader("Output")
+    st.text_area("Rewritten / Improved Text", value=rewritten_text, height=460, key="output_area")
+    col_copy, col_clear = st.columns(2)
+    if col_clear.button("Clear Output"):
+        st.session_state.pop("rewritten_text", None)
+        st.session_state.pop("improve_test_status", None)
+        st.rerun()
+    st.caption(f"Output length: {len(rewritten_text)} characters | {len(rewritten_text.split())} words")

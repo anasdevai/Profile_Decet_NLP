@@ -1,4 +1,4 @@
-spacy
+﻿spacy
 textstat
 pronouncing
 langdetect
@@ -13,3 +13,7 @@ sqlalchemy
 # redis
 # psycopg2-binary
 python-dotenv
+streamlit
+python-docx
+pypdf
+huggingface_hub
