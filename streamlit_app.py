@@ -5,8 +5,8 @@ from uuid import uuid4
 import os
 
 import streamlit as st
-from docx import Document
-from pypdf import PdfReader
+# Moved import
+# Moved import
 
 
 st.set_page_config(
@@ -94,8 +94,8 @@ def llm_status() -> dict:
 
 
 def read_uploaded_file(uploaded_file) -> str:
-    if uploaded_file is None:
-        return ""
+    from docx import Document
+    from pypdf import PdfReader
 
     name = uploaded_file.name.lower()
     data = uploaded_file.read()
