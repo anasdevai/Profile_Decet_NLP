@@ -1,27 +1,21 @@
 import os
 import re
 import json
-from huggingface_hub import InferenceClient
+from google import genai
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(env_path, override=True)
 
-HF_TOKEN = os.getenv("HF_TOKEN")
-HF_MODEL = os.getenv("HF_MODEL", "Qwen/Qwen3.5-9B")
-HF_PROVIDER = os.getenv("HF_PROVIDER", "auto")
-# Set HF_ENABLE_THINKING=true in .env to activate Qwen3 reasoning mode.
-# When enabled the model reasons internally via <think>...</think> before answering.
-HF_ENABLE_THINKING = os.getenv("HF_ENABLE_THINKING", "true").strip().lower() in {"1", "true", "yes"}
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MODEL_ID = "gemini-2.5-flash"
 
-llm = None
-if HF_TOKEN and HF_TOKEN != "your_hf_token_here":
+client = None
+if GEMINI_API_KEY:
     try:
-        llm = InferenceClient(
-            provider=HF_PROVIDER,
-            api_key=HF_TOKEN,
-        )
+        client = genai.Client(api_key=GEMINI_API_KEY)
     except Exception as e:
-        print("Failed to initialize Hugging Face client:", e)
+        print("Failed to initialize Gemini client:", e)
 
 
 def _strip_thinking(text: str) -> str:
@@ -34,46 +28,24 @@ def _strip_thinking(text: str) -> str:
 
 
 def _invoke_llm(prompt: str, system_prompt: str = None):
-    if not llm:
+    if not client:
         raise RuntimeError("LLM client not configured")
-    # HF Inference expects a valid repo id; drop router suffixes like ":fastest".
-    model_id = HF_MODEL.split(":", 1)[0].strip()
-    is_qwen3 = "qwen3" in model_id.lower() or "qwen/qwen3" in model_id.lower()
 
-    messages = []
+    contents = prompt
+    config = genai.types.GenerateContentConfig()
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
+        config.system_instruction = system_prompt
 
-    # Prefer chat-completion style invocation for newer instruction models.
     try:
-        if hasattr(llm, "chat_completion"):
-            extra = {}
-            if is_qwen3 and HF_ENABLE_THINKING:
-                # Qwen3 native thinking mode: model reasons in <think> blocks
-                # before producing the final structured answer.
-                extra["enable_thinking"] = True
-            resp = llm.chat_completion(
-                model=model_id,
-                messages=messages,
-                temperature=0.6 if (is_qwen3 and HF_ENABLE_THINKING) else 0.1,
-                max_tokens=3000 if (is_qwen3 and HF_ENABLE_THINKING) else 1200,
-                **extra,
-            )
-            if resp and getattr(resp, "choices", None):
-                raw = resp.choices[0].message.content or ""
-                return _strip_thinking(raw)
-    except Exception as chat_exc:
-        print(f"[LLM] chat_completion failed ({chat_exc}), falling back to text_generation")
-
-    # Fallback to text generation for providers/models that expose completions.
-    raw = llm.text_generation(
-        prompt,
-        model=model_id,
-        max_new_tokens=1200,
-        temperature=0.1,
-    )
-    return _strip_thinking(raw)
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=contents,
+            config=config,
+        )
+        return _strip_thinking(response.text)
+    except Exception as e:
+        print(f"[LLM] generate_content failed ({e})")
+        raise
 
 
 CONFIRM_PROMPT_TEMPLATE = """
@@ -98,7 +70,7 @@ CONFIRM_SYSTEM_PROMPT = (
 )
 
 def confirm_with_llm(text_sample: str, features: dict, prediction: dict) -> dict:
-    if not llm:
+    if not client:
         return {
             "confirmed_genre": prediction["predicted_genre"],
             "key_style_rules": ["Follow the natural flow of the document."],
@@ -245,7 +217,7 @@ If any constraint conflicts with fluency, prioritize the constraints over fluenc
 """
 
 def rewrite_chunk(chunk_text: str, section_title: str, style_profile: dict, similar_docs: list, mode="improve"):
-    if not llm:
+    if not client:
         return f"[LLM not configured] Original: {chunk_text}"
     mode = _normalize_mode(mode)
     dynamic = _get_dynamic_profile(style_profile)

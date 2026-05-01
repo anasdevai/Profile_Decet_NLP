@@ -10,6 +10,7 @@ pypdf
 
 # LLM backend
 huggingface_hub
+google-genai
 
 # Utilities
 python-dotenv
