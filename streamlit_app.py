@@ -85,11 +85,9 @@ def llm_status() -> dict:
     import llm_service
 
     return {
-        "llm_client_initialized": llm_service.llm is not None,
-        "hf_model": llm_service.HF_MODEL,
-        "hf_provider": llm_service.HF_PROVIDER,
-        "hf_token_present": bool(os.getenv("HF_TOKEN")),
-        "thinking_enabled": os.getenv("HF_ENABLE_THINKING", "true").strip().lower() in {"1", "true", "yes"},
+        "llm_client_initialized": llm_service.client is not None,
+        "model_id": llm_service.MODEL_ID,
+        "gemini_api_key_present": bool(os.getenv("GEMINI_API_KEY")),
     }
 
 
@@ -285,7 +283,7 @@ def local_fallback_transform(text: str, mode: str, profile: dict | None = None) 
             "### [LOCAL DRAFT] New Section Generated\n\n"
             f"Based on instruction: {cleaned}\n\n"
             "Style Note: This draft follows the detected profile's genre and tone. "
-            "Please use the Hugging Face Qwen toggle for high-fidelity reasoning-based generation."
+            "Please use the Gemini toggle for high-fidelity reasoning-based generation."
         )
     if mode == "rewrite":
         return cleaned
@@ -585,7 +583,7 @@ try:
     thinking_tag = " | Thinking: ON (Qwen3)" if thinking else ""
     st.caption(
         f"LLM: {'ready' if status['llm_client_initialized'] else 'not configured'} | "
-        f"Model: {status['hf_model']} | Provider: {status['hf_provider']}{thinking_tag}"
+        f"Model: {status['model_id']}"
     )
 except Exception as _llm_err:
     st.caption(f"LLM: not configured | {_llm_err}")
@@ -606,17 +604,17 @@ if input_mode == "Direct paste":
             placeholder="Copy and paste your document text here, then click Analyze Style.",
         )
         use_llm_validation = st.checkbox(
-            "Use Hugging Face validation during analysis",
+            "Use Gemini validation during analysis",
             value=False,
-            help="Keep this off for fast NLP output. Rewriting can still use Hugging Face Qwen.",
+            help="Keep this off for fast NLP output. Rewriting can still use Gemini.",
         )
         analyze_clicked = st.form_submit_button("Analyze Style", type="primary")
     document_text = pasted_text.strip()
 else:
     use_llm_validation = st.checkbox(
-        "Use Hugging Face validation during analysis",
+        "Use Gemini validation during analysis",
         value=False,
-        help="Keep this off for fast NLP output. Rewriting can still use Hugging Face Qwen.",
+        help="Keep this off for fast NLP output. Rewriting can still use Gemini.",
     )
     uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf", "docx"])
     if uploaded_file is not None:
@@ -667,7 +665,7 @@ if profile:
     }
     mode = mode_map[action]
     use_hf_rewrite = st.checkbox(
-        "Use Hugging Face Qwen for rewrite",
+        "Use Gemini for rewrite",
         value=False,
         help="Leave off for fast local output. Turn on to test remote LLM rewrite.",
     )
@@ -684,7 +682,7 @@ if profile:
 
     col_run, col_test = st.columns(2)
     run_clicked = col_run.button(action, disabled=not source_text)
-    test_improve_clicked = col_test.button("Test improve via HF", disabled=not stored_text)
+    test_improve_clicked = col_test.button("Test improve via Gemini", disabled=not stored_text)
 
     if run_clicked:
         with st.spinner(f"Running {mode}..."):
@@ -696,14 +694,13 @@ if profile:
             )
 
     if test_improve_clicked:
-        with st.spinner("Testing improve mode via Hugging Face Qwen..."):
+        with st.spinner("Testing improve mode via Gemini..."):
             improved = rewrite_text(stored_text, profile, "improve", True)
             st.session_state["rewritten_text"] = improved
             st.session_state["improve_test_status"] = {
                 "mode": "improve",
                 "llm_client_initialized": status["llm_client_initialized"],
-                "hf_model": status["hf_model"],
-                "hf_provider": status["hf_provider"],
+                "model_id": status["model_id"],
                 "output_len": len(improved or ""),
                 "is_fallback": isinstance(improved, str)
                 and (

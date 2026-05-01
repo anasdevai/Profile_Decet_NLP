@@ -146,18 +146,16 @@ def rewrite_document(req: RewriteRequest, db: Session = Depends(database.get_db)
             "mode": req.mode,
             "chunk_count": len(chunks),
             "fallback_count": fallback_count,
-            "llm_client_initialized": llm_service.llm is not None,
-            "hf_model": llm_service.HF_MODEL,
-            "hf_provider": llm_service.HF_PROVIDER,
+            "llm_client_initialized": llm_service.client is not None,
+            "model_id": llm_service.MODEL_ID,
         }
     return response
 
 @app.get("/llm-status")
 def llm_status():
     return {
-        "llm_client_initialized": llm_service.llm is not None,
-        "hf_model": llm_service.HF_MODEL,
-        "hf_provider": llm_service.HF_PROVIDER,
+        "llm_client_initialized": llm_service.client is not None,
+        "model_id": llm_service.MODEL_ID,
     }
 
 @app.post("/feedback")
