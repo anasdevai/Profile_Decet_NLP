@@ -1,0 +1,236 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary)}
+.wrap{padding:16px 0;max-width:680px}
+.stage-group{margin-bottom:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.stage-header{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;background:var(--color-background-secondary)}
+.stage-header:hover{background:var(--color-background-tertiary)}
+.badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.stage-title{font-size:13px;font-weight:500;flex:1}
+.arrow{font-size:11px;color:var(--color-text-secondary);transition:transform .2s}
+.stage-body{padding:12px 14px;border-top:0.5px solid var(--color-border-tertiary);display:none;background:var(--color-background-primary)}
+.stage-body.open{display:block}
+.param-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.param-chip{font-size:11px;padding:3px 8px;border-radius:6px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.param-chip.crit{background:#E6F1FB;border-color:#B5D4F4;color:#0C447C}
+.param-chip.warn{background:#FAEEDA;border-color:#FAC775;color:#633806}
+.param-chip.ok{background:#EAF3DE;border-color:#C0DD97;color:#27500A}
+.param-chip.purple{background:#EEEDFE;border-color:#AFA9EC;color:#3C3489}
+.note{font-size:11px;color:var(--color-text-secondary);line-height:1.5;margin-top:6px;padding:6px 10px;background:var(--color-background-secondary);border-radius:6px;border-left:2px solid var(--color-border-secondary)}
+.llm-box{border:1.5px solid #B5D4F4;border-radius:var(--border-radius-lg);padding:14px;background:#E6F1FB;margin:12px 0}
+.llm-title{font-size:13px;font-weight:500;color:#0C447C;margin-bottom:10px}
+.llm-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.llm-param{font-size:11px;padding:4px 8px;border-radius:6px;background:#fff;border:0.5px solid #B5D4F4;color:#185FA5;font-weight:500}
+.gap-box{border:1.5px solid #F7C1C1;border-radius:var(--border-radius-lg);padding:12px;background:#FCEBEB;margin:8px 0}
+.gap-title{font-size:12px;font-weight:500;color:#A32D2D;margin-bottom:8px}
+.gap-item{font-size:11px;color:#791F1F;margin-bottom:4px;padding-left:10px;position:relative}
+.gap-item::before{content:"✗";position:absolute;left:0;color:#E24B4A}
+.flow-line{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:11px;color:var(--color-text-secondary)}
+.flow-arrow{color:var(--color-border-secondary);font-size:14px}
+.section-label{font-size:12px;font-weight:500;color:var(--color-text-secondary);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em}
+.verdict{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--border-radius-md);margin-top:8px;font-size:12px}
+.verdict.pass{background:#EAF3DE;color:#27500A;border:0.5px solid #C0DD97}
+.verdict.fail{background:#FCEBEB;color:#791F1F;border:0.5px solid #F7C1C1}
+.verdict-icon{font-size:14px;flex-shrink:0}
+</style>
+<div class="wrap">
+<div class="section-label">What gets detected → what the LLM receives</div>
+
+<!-- STAGE 1 -->
+<div class="stage-group">
+  <div class="stage-header" onclick="toggle(this)">
+    <span class="badge" style="background:#E6F1FB;color:#185FA5;border:0.5px solid #B5D4F4">Stage 1</span>
+    <span class="stage-title">Language & Script Detection</span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="stage-body">
+    <div class="param-grid">
+      <span class="param-chip crit">primary_language (ISO 639-1)</span>
+      <span class="param-chip crit">confidence score 0.0–1.0</span>
+      <span class="param-chip warn">is_bilingual flag</span>
+      <span class="param-chip warn">bilingual_pair [lang1, lang2]</span>
+      <span class="param-chip ok">script_type (Latin/Arabic/CJK…)</span>
+      <span class="param-chip ok">has_code_switching</span>
+      <span class="param-chip ok">technical_language_density</span>
+      <span class="param-chip ok">processing_mode</span>
+    </div>
+    <div class="note">✓ All 8 signals present. LLM receives: language, bilingual mode, script. Used in system prompt to lock output language and modal verb equivalents (muss=SHALL, soll=SHOULD).</div>
+  </div>
+</div>
+
+<!-- STAGE 2 -->
+<div class="stage-group">
+  <div class="stage-header" onclick="toggle(this)">
+    <span class="badge" style="background:#EAF3DE;color:#3B6D11;border:0.5px solid #C0DD97">Stage 2</span>
+    <span class="stage-title">Writing Style Fingerprinting</span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="stage-body">
+    <div class="param-grid">
+      <span class="param-chip crit">primary_style (12 types)</span>
+      <span class="param-chip crit">chunking_strategy_selected</span>
+      <span class="param-chip crit">numbering_type</span>
+      <span class="param-chip crit">header_style</span>
+      <span class="param-chip warn">max_nesting_depth</span>
+      <span class="param-chip warn">table_density ratio</span>
+      <span class="param-chip warn">bullet_ratio</span>
+      <span class="param-chip warn">prose_ratio</span>
+      <span class="param-chip ok">form_field_ratio</span>
+      <span class="param-chip ok">secondary_style</span>
+    </div>
+    <div class="note">✓ Style fully detected. LLM receives: DETECTED_STYLE → enforces preserve decimal numbering, legal article structure, or checklist format in all rewrites.</div>
+  </div>
+</div>
+
+<!-- STAGE 3 -->
+<div class="stage-group">
+  <div class="stage-header" onclick="toggle(this)">
+    <span class="badge" style="background:#EEEDFE;color:#534AB7;border:0.5px solid #AFA9EC">Stage 3</span>
+    <span class="stage-title">Tone Profile Classification</span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="stage-body">
+    <div class="param-grid">
+      <span class="param-chip crit">primary_tone (10 types)</span>
+      <span class="param-chip crit">formality_level</span>
+      <span class="param-chip crit">authority_level</span>
+      <span class="param-chip crit">compliance_weight</span>
+      <span class="param-chip warn">SHALL_ratio / MUST_ratio</span>
+      <span class="param-chip warn">passive_ratio</span>
+      <span class="param-chip warn">avg_sentence_length</span>
+      <span class="param-chip warn">acronym_density</span>
+      <span class="param-chip ok">sub_tone_modifiers [ ]</span>
+      <span class="param-chip ok">hedging_density</span>
+      <span class="param-chip ok">contraction_presence</span>
+      <span class="param-chip ok">nominalisation_density</span>
+    </div>
+    <div class="note">✓ Tone detected. LLM receives: DETECTED_TONE → activates tone guardrails block. E.g. HIGHLY_FORMAL_REGULATORY → no contractions, no first person, passive only in system descriptions.</div>
+  </div>
+</div>
+
+<!-- STAGE 4 -->
+<div class="stage-group">
+  <div class="stage-header" onclick="toggle(this)">
+    <span class="badge" style="background:#FAEEDA;color:#854F0B;border:0.5px solid #FAC775">Stage 4</span>
+    <span class="stage-title">Domain Auto-Discovery</span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="stage-body">
+    <div class="param-grid">
+      <span class="param-chip crit">primary_domain</span>
+      <span class="param-chip crit">domain_confidence score</span>
+      <span class="param-chip crit">applicable_standards [ ]</span>
+      <span class="param-chip warn">regulatory_citations [ ]</span>
+      <span class="param-chip warn">role_vocabulary_match [ ]</span>
+      <span class="param-chip warn">tfidf_fingerprint_top10</span>
+      <span class="param-chip ok">domain_auto_discovered bool</span>
+      <span class="param-chip ok">secondary_domain</span>
+      <span class="param-chip ok">secondary_confidence</span>
+    </div>
+    <div class="note">✓ Domain detected. LLM receives: DETECTED_DOMAIN + APPLICABLE_STANDARDS → selects canonical section order (ISO/IEC/GMP/Aviation) + domain-specific constraints (batch records, access IDs, airworthiness refs).</div>
+  </div>
+</div>
+
+<!-- STAGE 6 KEY EXTRACTIONS -->
+<div class="stage-group">
+  <div class="stage-header" onclick="toggle(this)">
+    <span class="badge" style="background:#FAECE7;color:#993C1D;border:0.5px solid #F5C4B3">Stage 6</span>
+    <span class="stage-title">Deep Feature Extraction → Vocabulary Profile</span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="stage-body">
+    <div class="param-grid">
+      <span class="param-chip crit">defined_terms registry</span>
+      <span class="param-chip crit">precision_term_registry</span>
+      <span class="param-chip crit">traceability_id_prefixes</span>
+      <span class="param-chip crit">acronym expansions map</span>
+      <span class="param-chip warn">modal_verb_density</span>
+      <span class="param-chip warn">actorless_obligation_rate</span>
+      <span class="param-chip warn">passive_obligation_rate</span>
+      <span class="param-chip warn">instruction_completeness</span>
+      <span class="param-chip warn">actor_coverage_ratio</span>
+      <span class="param-chip ok">SLA_specification_rate</span>
+      <span class="param-chip ok">sentence_length_variance</span>
+      <span class="param-chip ok">control_loop_completeness</span>
+      <span class="param-chip purple">section semantic labels (17 types)</span>
+      <span class="param-chip purple">defined_term_reuse_ratio</span>
+    </div>
+    <div class="note">✓ This is the core vocabulary fingerprint sent to LLM. Every defined term, ID prefix, acronym map becomes an absolute preservation rule: "Confidential Information" must never become "confidential data".</div>
+  </div>
+</div>
+
+<!-- STAGE 7 SYMBOL TABLE -->
+<div class="stage-group">
+  <div class="stage-header" onclick="toggle(this)">
+    <span class="badge" style="background:#EAF3DE;color:#3B6D11;border:0.5px solid #C0DD97">Stage 7</span>
+    <span class="stage-title">Cross-Section Symbol Table (consistency inputs)</span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="stage-body">
+    <div class="param-grid">
+      <span class="param-chip crit">defined_roles [ ]</span>
+      <span class="param-chip crit">traceability_ids [ ]</span>
+      <span class="param-chip crit">SLA_register [ ]</span>
+      <span class="param-chip warn">regulatory_refs [ ]</span>
+      <span class="param-chip warn">form_references [ ]</span>
+      <span class="param-chip warn">section_label_sequence</span>
+      <span class="param-chip warn">version_number</span>
+      <span class="param-chip ok">effective_date</span>
+      <span class="param-chip ok">approval_date</span>
+      <span class="param-chip ok">revision_entries [ ]</span>
+    </div>
+    <div class="note">✓ Symbol table used by LLM to enforce: never change SLA "72 hours" to "3 days", never paraphrase traceability IDs (SOP-xxx, CAPA-xxx), preserve all role names exactly.</div>
+  </div>
+</div>
+
+<!-- LLM INPUT PACKAGE -->
+<div class="llm-box">
+  <div class="llm-title">LLM System Prompt — Parameters injected (9B template)</div>
+  <div class="llm-grid">
+    <span class="llm-param">DETECTED_DOMAIN</span>
+    <span class="llm-param">DETECTED_TONE</span>
+    <span class="llm-param">DETECTED_STYLE</span>
+    <span class="llm-param">APPLICABLE_STANDARDS</span>
+    <span class="llm-param">DETECTED_LANGUAGE</span>
+    <span class="llm-param">SECONDARY_LANGUAGE</span>
+    <span class="llm-param">precision_term_registry</span>
+    <span class="llm-param">traceability_ids</span>
+    <span class="llm-param">SLA_register</span>
+    <span class="llm-param">defined_roles</span>
+    <span class="llm-param">section_order (canonical)</span>
+    <span class="llm-param">modal_hierarchy</span>
+    <span class="llm-param">tone_guardrails block</span>
+    <span class="llm-param">domain_constraints</span>
+    <span class="llm-param">task_type (rewrite/improve/create)</span>
+  </div>
+  <div class="note" style="margin-top:10px;background:#fff">LLM generates output BOUND by all 15 parameters above. Writing style, tone, vocabulary, structure, SLA values, traceability IDs — all locked before first token.</div>
+</div>
+
+<!-- GAPS SECTION -->
+<div class="section-label">Gaps — what's missing or underspecified</div>
+<div class="gap-box">
+  <div class="gap-title">Critical gaps that will reduce LLM output quality</div>
+  <div class="gap-item">No vocabulary density threshold sent to LLM — it knows terms exist but not their frequency baseline. A term used 40× vs 2× should have different enforcement weight.</div>
+  <div class="gap-item">Precision term registry built but violation list NOT passed to LLM — LLM must re-detect violations it's supposed to avoid. The pre-computed violation list (Stage 8D) should be injected as a "never use these alternatives" blocklist.</div>
+  <div class="gap-item">Step completeness scores per step NOT passed to LLM — LLM doesn't know which exact steps scored 1/4 or 2/4. It gets a summary ratio, not the specific deficient steps.</div>
+  <div class="gap-item">Tone signal RAW values (SHALL_ratio 0.42, passive_ratio 0.28) detected in Stage 3 are NOT injected into the system prompt — LLM can't calibrate to match source document's exact register.</div>
+  <div class="gap-item">Section semantic labels (purpose/scope/procedure etc.) not sent as a map — LLM rewrites without knowing the semantic role of each chunk, risking role confusion.</div>
+  <div class="gap-item">CREATE task: no minimum vocabulary seeding — when creating from scratch, LLM has no domain term list to draw from, so output may use imprecise synonyms instead of precision terms.</div>
+  <div class="gap-item">Bilingual term pairs not explicitly mapped — LLM knows the document is bilingual but has no glossary of EN↔DE (or other) precision equivalents to enforce during translation or rewrite.</div>
+</div>
+
+<!-- VERDICTS -->
+<div class="verdict pass"><span class="verdict-icon">✓</span><span>Stages 1–4 fully cover language, style, tone, domain — all injected into LLM system prompt. Foundation is solid.</span></div>
+<div class="verdict pass"><span class="verdict-icon">✓</span><span>Stage 6 vocabulary registry (defined terms, IDs, acronyms) is comprehensive — these become hard preservation rules in LLM output.</span></div>
+<div class="verdict fail"><span class="verdict-icon">✗</span><span>The pre-computed violation list, step-level scores, and raw tone ratios must be added to the LLM injection payload for rewrite/improve tasks to reach 10/10 fidelity.</span></div>
+<div class="verdict fail"><span class="verdict-icon">✗</span><span>CREATE task lacks domain vocabulary seeding — the LLM will improvise terminology rather than use detected precision terms. Add a "seed_terms" injection block for CREATE.</span></div>
+</div>
+<script>
+function toggle(header){
+  const body=header.nextElementSibling;
+  const arrow=header.querySelector('.arrow');
+  const open=body.classList.toggle('open');
+  arrow.style.transform=open?'rotate(180deg)':'';
+}
+</script>

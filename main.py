@@ -53,55 +53,37 @@ def get_threshold(db, genre: str, lang_code: str) -> float:
 def analyze_document(req: AnalyzeRequest, db: Session = Depends(database.get_db)):
     doc_id = req.doc_id or str(uuid4())
     
-    # Run Stages 1-7
+    # Run the V2 NLP Pipeline (Stages 1-9)
     result = nlp_pipeline.process_document(req.text)
     
-    genre = result["classification"]["predicted_genre"]
-    confidence = result["classification"]["confidence"]
+    # Extract the deep structured profile
+    sop_profile = result.get("structured_sop_profile") or {}
+    doc_identity = sop_profile.get("document_identity", {})
+    
+    genre = doc_identity.get("primary_genre", "general")
+    confidence = doc_identity.get("confidence", 0.0)
     lang_code = result["language"]["lang_code"]
     
     threshold = get_threshold(db, genre, lang_code)
-    llm_used = False
     
-    # Stage 8: Conditional LLM validation
-    if confidence < threshold or lang_code in ["ur", "hi", "ar"]:
-        llm_used = True
-        llm_result = llm_service.confirm_with_llm(req.text, result["features"], result["classification"])
-        genre = llm_result.get("confirmed_genre", genre)
-        key_style_rules = llm_result.get("key_style_rules", [])
-        do_not_change = llm_result.get("do_not_change", [])
-        tone = llm_result.get("tone", "neutral")
-    else:
-        key_style_rules = [f"Vocabulary heavily relies on {genre} terminology"]
-        do_not_change = []
-        if result["features"]["structure"]["has_numbered_steps"]:
-            do_not_change.append("Numbered list structure")
-        tone = "neutral"
-
-    # Stage 9: Profile generation
+    # Stage 9: Profile generation (Enhanced for V2)
     profile = {
         "doc_id": doc_id,
         "org_id": req.org_id,
         "genre": genre,
         "confidence": confidence,
-        "tone": tone,
-        "voice": result["features"]["voice"],
-        "vocabulary_type": f"{genre}_jargon",
-        "structure": "numbered_steps" if result["features"]["structure"]["has_numbered_steps"] else "prose",
-        "wording_style": "formal" if result["features"]["formal_morph"] > 5 else "casual",
+        "tone": result["tone_profile"]["primary_tone"],
+        "voice": result["writing_style"]["voice"],
         "language": lang_code,
-        "llm_used": llm_used,
-        "threshold_used": threshold,
-        "key_style_rules": key_style_rules,
-        "do_not_change": do_not_change,
-        "version": 1,
+        "version": 2,
         "feedback_corrections": 0,
-        "features": result["features"]
+        "structured_profile": sop_profile, # The full V2 profile
+        "chunks": result["chunks"]
     }
     
-    # Ingest document chunks to Qdrant (Stage 12 Runtime Learning)
+    # Ingest document chunks to Qdrant with flattened V2 taxonomy
     qdrant_ids = vector_store.ingest_document_chunks(
-        result["chunks"], profile, lang_code, f"doc_{doc_id}", req.org_id
+        result["chunks"], result, lang_code, f"doc_{doc_id}", req.org_id
     )
     profile["qdrant_point_ids"] = qdrant_ids
     
@@ -113,28 +95,41 @@ def analyze_document(req: AnalyzeRequest, db: Session = Depends(database.get_db)
 def rewrite_document(req: RewriteRequest, db: Session = Depends(database.get_db)):
     doc_id = req.doc_id or str(uuid4())
     
-    # Stage 1-9
-    profile = analyze_document(AnalyzeRequest(text=req.text, doc_id=doc_id, org_id=req.org_id), db)
+    # Re-analyze to get the full V2 context if not provided
+    analysis = nlp_pipeline.process_document(req.text)
+    profile = analysis["structured_sop_profile"]
     
-    # Stage 10: Chunk-wise rewrite
-    chunks = nlp_pipeline.smart_chunk(req.text)
+    # Stage 10: V2 Adaptive Semantic Chunking
+    chunks = analysis["chunks"]
     
+    # Retrieval (Stage 11)
     similar_docs = vector_store.retrieve_similar_styles(
-        query_text=chunks[0].content if chunks else req.text,
-        lang_code=profile["language"],
-        genre_filter=profile["genre"],
+        query_text=chunks[0].get("content", "") if chunks else req.text,
+        lang_code=analysis["language"]["lang_code"],
+        genre_filter=profile.get("document_identity", {}).get("primary_genre", "general"),
         top_k=3
     )
     
     rewritten_sections = []
     fallback_count = 0
     for chunk in chunks:
+        # V2 Execution Layer (llm_service)
         rewritten = llm_service.rewrite_chunk(
-            chunk.content, chunk.section_title, profile, similar_docs, req.mode
+            chunk_text=chunk.get("content", ""),
+            section_title=chunk.get("section_title", ""),
+            analysis_result=analysis,
+            similar_docs=similar_docs,
+            mode=req.mode
         )
-        if rewritten.startswith("[LLM not configured]") or rewritten.startswith("[Rewrite Failed]") or not rewritten.strip():
+        if "[Rewrite Failed]" in rewritten or not rewritten.strip():
             fallback_count += 1
-        rewritten_sections.append(f"## {chunk.section_title}\n\n{rewritten}")
+            rewritten = chunk.get("content", "") # Fallback to original
+            
+        title = chunk.get("section_title") or chunk.get("title") or "Section"
+        if chunk.get("is_generic", False) or title.lower() in ["section", "body", "intro"]:
+            rewritten_sections.append(rewritten)
+        else:
+            rewritten_sections.append(f"## {title}\n\n{rewritten}")
 
     response = {
         "doc_id": doc_id,
@@ -146,7 +141,6 @@ def rewrite_document(req: RewriteRequest, db: Session = Depends(database.get_db)
             "mode": req.mode,
             "chunk_count": len(chunks),
             "fallback_count": fallback_count,
-            "llm_client_initialized": llm_service.client is not None,
             "model_id": llm_service.MODEL_ID,
         }
     return response

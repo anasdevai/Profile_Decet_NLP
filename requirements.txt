@@ -15,3 +15,7 @@ google-genai
 # Utilities
 python-dotenv
 streamlit
+scikit-learn
+sentence-transformers
+rapidfuzz
+dateparser

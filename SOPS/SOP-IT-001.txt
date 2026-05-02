@@ -1,0 +1,88 @@
+SOP ID + Titel: SOP-IT-001 – Zugriffsmanagement auf Produktionsnetzwerk (OT)
+LEFT (SOP CONTENT):
+
+Zweck: Nur autorisierte Personen (intern/extern/KI) dürfen aufs OT-Netz. Trennung IT/OT nach IEC 62443.
+
+Geltungsbereich: IT, externe Dienstleister, Produktion, Wartung, KI-Systeme.
+
+Key Points:
+
+Zugriffsarten: Read-only, Operator, Service, Admin, KI-Read, KI-Write.
+
+Externe: 24h Voranmeldung, Vertraulichkeit, VPN + 2FA, max. 8h, Log nach 1h.
+
+Passwort: 12 Zeichen, 90 Tage, 3 Fehlversuche → 15 Min Sperre.
+
+Jeder Zugriff im zentralen Log (6 Jahre Aufbewahrung).
+
+Notfall (Break-Glass) nur mit Token aus Tresor, Nachdokumentation in 24h.
+
+RIGHT (RELATED CONTEXT):
+
+Deviations:
+
+DEV-IT-001 – Externer Siemens-Techniker ohne 24h Voranmeldung auf SPS zugegriffen.
+
+DEV-IT-002 – Standardpasswort „admin/admin“ auf Abfüllmaschine noch aktiv nach 6 Monaten.
+
+DEV-IT-003 – Externer Dienstleister nutzte nur Passwort, 2FA umgangen.
+
+DEV-IT-004 – 3 Tage Zugriffslogs komplett fehlend (Speicher voll).
+
+DEV-IT-005 – Operator Maier hatte fälschlich Admin-Rechte auf Fermenter.
+
+DEV-IT-006 – Externer Netzwerktechniker ohne unterschriebene Vertraulichkeitserklärung.
+
+DEV-IT-007 – Dienstleisterzugriff um 22:30 Uhr (nur bis 20:00 erlaubt).
+
+DEV-IT-008 – Service-Account mit Passwort statt Zertifikat.
+
+DEV-IT-009 – Read-only-Zugriffe des Produktionsleiters nicht geloggt.
+
+DEV-IT-010 – Admin-Zugriff ohne QP-Genehmigung (Vier-Augen umgangen).
+
+CAPAs:
+
+CAPA-IT-001 – Einführung Ticketing-System mit 24h Vorlaufpflicht für Externe.
+
+CAPA-IT-002 – Checkliste für Maschinenabnahme: Standardpasswort ändern.
+
+CAPA-IT-003 – Upgrade VPN-Gateway + Hardware-Token für 2FA bei Dienstleistern.
+
+CAPA-IT-004 – Zentrale Log-Archivierung (Graylog) mit täglichem Integritätscheck.
+
+CAPA-IT-005 – Monatlicher automatisierter Rollen-Abgleich AD mit Soll.
+
+CAPA-IT-006 – Zentrale Vertragsdatenbank für Dienstleister mit Verfallsalarm.
+
+CAPA-IT-007 – Firewall-Regel: Externe Zugriffe nur 06:00–20:00.
+
+CAPA-IT-008 – Migration aller Service-Accounts auf X.509-Zertifikate.
+
+CAPA-IT-009 – SCADA-Logging für jeden Read-only-Zugriff nachkonfiguriert.
+
+CAPA-IT-010 – ServiceNow-Workflow: Admin-Zugriff nur mit IT + QP-Freigabe.
+
+Audit Findings:
+
+AUD-IT-001 – EMA: Externe Zugriffe nicht ausreichend kontrolliert (keine 24h Vorlauf).
+
+AUD-IT-002 – Intern: Standardpasswort auf Abfüllmaschine.
+
+AUD-IT-003 – FDA: Keine 2FA für Remote-Zugriff von Dienstleistern.
+
+AUD-IT-004 – Intern: Zugriffslogs lückenhaft (3 Tage fehlen).
+
+AUD-IT-005 – Kunde: Unklare Rollenverteilung (Operator mit Admin-Rechten).
+
+AUD-IT-006 – Behörde: Dienstleister ohne Vertraulichkeitserklärung.
+
+Decisions:
+
+DEC-IT-001 – Stilllegung Abfüllmaschine für 2 Tage, Passwort-Reset & Schulung.
+
+DEC-IT-002 – Dienstleister NetTech GmbH gesperrt bis 2FA implementiert.
+
+DEC-IT-003 – Charge #4682 trotz Log-Lücke freigegeben mit verlängerter Stabilitätsprüfung.
+
+DEC-IT-014 – Dienstleisterverträge überarbeitet: 5.000 € Vertragsstrafe pro Verstoß.

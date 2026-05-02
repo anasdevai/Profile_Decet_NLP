@@ -117,102 +117,46 @@ def build_profile(text: str, use_llm_validation: bool = False) -> dict:
     import nlp_pipeline
 
     result = nlp_pipeline.process_document(text)
-    genre = result["classification"]["predicted_genre"]
-    confidence = result["classification"]["confidence"]
-    lang_code = result["language"]["lang_code"]
+    
+    # Extraction from V2 profile
+    sop_profile = result.get("structured_sop_profile") or {}
+    doc_id_info = sop_profile.get("document_identity", {})
+    classification = sop_profile.get("classification", {})
+    
+    genre = classification.get("primary_genre", "general")
+    confidence = classification.get("genre_confidence", 0.0)
+    lang_code = result.get("language", {}).get("lang_code", "en")
 
-    llm_used = False
-    threshold = 0.70
-    key_style_rules = [f"Preserve the detected {genre} style and structure."]
+    style_rules = []
+    if sop_profile.get("precision_blocklist"):
+        style_rules.append(f"BLOCKLIST: {sop_profile['precision_blocklist']}")
+    if sop_profile.get("domain_seeds"):
+        style_rules.append(f"DOMAIN SEEDS: {', '.join(sop_profile['domain_seeds'])}")
+
     do_not_change = []
-    tone = "neutral"
-
-    should_validate_with_llm = (
-        use_llm_validation
-        and (confidence < threshold or lang_code in {"ur", "hi", "ar"} or result["language"]["is_mixed_script"])
-    )
-
-    if should_validate_with_llm:
-        import llm_service
-
-        llm_used = True
-        llm_result = llm_service.confirm_with_llm(
-            text,
-            result["features"],
-            result["classification"],
-        )
-        genre = llm_result.get("confirmed_genre", genre)
-        key_style_rules = llm_result.get("key_style_rules", key_style_rules)
-        do_not_change = llm_result.get("do_not_change", do_not_change)
-        tone = llm_result.get("tone", tone)
-
-    structure = result["features"]["structure"]
-    poetic_style = result["features"].get("poetic_style", {})
-    sop_style = result["features"].get("sop_style", {})
-    legal_style = result["features"].get("legal_style", {})
-    is_compliance_doc = sop_style.get("format_score", 0) >= 0.45 or legal_style.get("legalese_score", 0) >= 0.35
-    if structure["has_numbered_steps"]:
-        do_not_change.append("Preserve numbered steps.")
-    if structure["has_bullets"]:
-        do_not_change.append("Preserve bullet structure.")
-    if structure["has_table"]:
-        do_not_change.append("Preserve table-like content.")
-    if poetic_style.get("is_lineated") and not is_compliance_doc:
-        do_not_change.append("Preserve poetic line breaks and stanza-like shape.")
-        key_style_rules.append("Keep line breaks; do not flatten the poem into prose.")
-    if poetic_style.get("rhyme_scheme") and not is_compliance_doc:
-        do_not_change.append(f"Preserve rhyme/music pattern where possible: {poetic_style['rhyme_scheme']}.")
-        key_style_rules.append("Use end-word rhyme or slant rhyme to retain musicality.")
-    if poetic_style.get("figurative_density", 0) >= 0.8 and not is_compliance_doc:
-        key_style_rules.append("Preserve compressed metaphor-heavy language instead of explaining the imagery.")
-    if poetic_style.get("emotional_delivery") in {"subtle/symbolic", "figurative/emotive"} and not is_compliance_doc:
-        key_style_rules.append(f"Preserve emotional delivery: {poetic_style['emotional_delivery']}.")
-
-    if sop_style.get("format_score", 0) >= 0.45:
-        key_style_rules.append(f"Preserve SOP/QMS format: {sop_style['format_pattern']}.")
-        if sop_style.get("sections_found"):
-            do_not_change.append(f"Preserve section order/headings: {', '.join(sop_style['sections_found'])}.")
-        if sop_style.get("numbered_step_count", 0) > 0:
-            do_not_change.append("Preserve numbered procedural steps and action-oriented wording.")
-        if sop_style.get("shall_count", 0) or sop_style.get("must_count", 0):
-            key_style_rules.append("Preserve mandatory control language such as shall/must where appropriate.")
-        if sop_style.get("compliance_ids"):
-            do_not_change.append(f"Preserve all traceability IDs: {', '.join(sop_style['compliance_ids'][:30])}.")
-        if sop_style.get("precision_terms"):
-            do_not_change.append(
-                "Preserve regulated source terminology: "
-                + "; ".join(f"{k} = {v}" for k, v in sop_style["precision_terms"].items())
-            )
-        key_style_rules.append("Do not introduce rhyme, metaphor, poetic compression, or narrative wording into SOP/QMS content.")
-
-    if legal_style.get("legalese_score", 0) >= 0.35:
-        key_style_rules.append(f"Preserve legal/firm drafting pattern: {legal_style['format_pattern']}.")
-        if legal_style.get("clause_headers_found"):
-            do_not_change.append(f"Preserve clause headings: {', '.join(legal_style['clause_headers_found'])}.")
-        if legal_style.get("defined_terms"):
-            do_not_change.append(f"Preserve defined terms: {', '.join(legal_style['defined_terms'][:8])}.")
-        if legal_style.get("obligation_count", 0) > 0:
-            key_style_rules.append("Preserve obligation language and legal modality such as shall, may, and shall not.")
+    traceability = sop_profile.get("traceability", {})
+    if traceability.get("ids"):
+        do_not_change.append(f"Preserve IDs: {', '.join(traceability['ids'][:10])}")
 
     return {
         "doc_id": str(uuid4()),
         "genre": genre,
         "confidence": confidence,
-        "runner_up": result["classification"]["runner_up"],
-        "all_scores": result["classification"]["all_scores"],
-        "tone": tone,
-        "voice": result["features"]["voice"],
+        "tone": result.get("tone_profile", {}).get("primary_tone", "neutral"),
+        "voice": result.get("features", {}).get("voice", "active"),
         "language": lang_code,
-        "llm_used": llm_used,
-        "key_style_rules": key_style_rules,
-        "do_not_change": list(dict.fromkeys(do_not_change)),
-        "features": result["features"],
+        "key_style_rules": style_rules,
+        "do_not_change": do_not_change,
+        "features": result.get("writing_style", {}),
+        "structured_profile": sop_profile,
+        "analysis_result": result, # Store the full result for rewrite
         "chunks": [
             {
-                "section_title": chunk.section_title,
-                "section_type": chunk.section_type,
-                "word_count": len(chunk.content.split()),
-                "content": chunk.content,
+                "section_title": chunk.get("section_title", "Body"),
+                "section_type": chunk.get("section_type", "general"),
+                "word_count": len(chunk.get("content", "").split()),
+                "content": chunk.get("content", ""),
+                "is_generic": chunk.get("is_generic", False)
             }
             for chunk in result["chunks"]
         ],
@@ -220,54 +164,52 @@ def build_profile(text: str, use_llm_validation: bool = False) -> dict:
 
 
 def rewrite_text(text: str, profile: dict, mode: str, use_hf_llm: bool = False) -> str:
-    import nlp_pipeline
+    # If using HF LLM, use the V2 service
+    if use_hf_llm:
+        import llm_service
+        import nlp_pipeline
+        
+        # We need the full analysis result for the prompt builder
+        analysis = profile.get("analysis_result")
+        if not analysis:
+            analysis = nlp_pipeline.process_document(text)
+            
+        chunks = analysis["chunks"]
+        rewritten_sections = []
 
-    sop_style = profile.get("features", {}).get("sop_style", {})
-    legal_style = profile.get("features", {}).get("legal_style", {})
-    is_compliance_doc = sop_style.get("format_score", 0) >= 0.45 or legal_style.get("legalese_score", 0) >= 0.35
-
-    if is_compliance_doc and not use_hf_llm:
-        return local_fallback_transform(text, mode, profile)
-
-    chunks = nlp_pipeline.smart_chunk(text)
-    rewritten_sections = []
-
-    for chunk in chunks:
-        if use_hf_llm:
-            import llm_service
-
+        for chunk in chunks:
             rewritten = llm_service.rewrite_chunk(
-                chunk_text=chunk.content,
-                section_title=chunk.section_title,
-                style_profile=profile,
+                chunk_text=chunk.get("content", ""),
+                section_title=chunk.get("section_title", ""),
+                analysis_result=analysis,
                 similar_docs=[],
                 mode=mode,
             )
-            if rewritten.startswith("[LLM not configured]") or rewritten.startswith("[Rewrite Failed]"):
-                rewritten = local_fallback_transform(chunk.content, mode, profile)
-            rewritten = compliance_precision_postprocess(rewritten, profile)
-        else:
-            rewritten = local_fallback_transform(chunk.content, mode, profile)
-        if getattr(chunk, "is_generic", chunk.section_title.startswith("Chunk ") or chunk.section_title == "Intro"):
-            rewritten_sections.append(rewritten)
-        else:
-            rewritten_sections.append(f"{chunk.section_title}\n\n{rewritten}")
+            
+            if "[Rewrite Failed]" in rewritten:
+                rewritten = chunk.get("content", "")
+                
+            title = chunk.get("section_title") or chunk.get("title") or "Body"
+            if chunk.get("is_generic", False) or title.lower() in ["body", "intro", "section"]:
+                rewritten_sections.append(rewritten)
+            else:
+                rewritten_sections.append(f"### {title}\n\n{rewritten}")
 
-    return "\n\n".join(rewritten_sections)
+        return "\n\n".join(rewritten_sections)
+    else:
+        # Local fallback
+        return local_fallback_transform(text, mode, profile)
 
 
 def local_fallback_transform(text: str, mode: str, profile: dict | None = None) -> str:
     profile = profile or {}
-    sop_style = profile.get("features", {}).get("sop_style", {})
-    legal_style = profile.get("features", {}).get("legal_style", {})
-    if sop_style.get("format_score", 0) >= 0.45:
+    sop_profile = profile.get("structured_profile", {})
+    
+    # Check if it's a compliance doc using V2 confidence
+    is_sop = profile.get("genre") == "IT_OT_security" or profile.get("genre") == "QMS_general"
+    
+    if is_sop:
         return compliance_precision_postprocess(local_compliance_transform(text, mode, "SOP/QMS"), profile)
-    if legal_style.get("legalese_score", 0) >= 0.35:
-        return local_compliance_transform(text, mode, "Legal/Firm")
-
-    poetic_style = profile.get("features", {}).get("poetic_style", {})
-    if poetic_style.get("is_lineated") or profile.get("genre") == "poetry":
-        return local_poetry_transform(text, mode)
 
     cleaned = " ".join(text.split())
     if mode == "shorten":
@@ -285,8 +227,6 @@ def local_fallback_transform(text: str, mode: str, profile: dict | None = None) 
             "Style Note: This draft follows the detected profile's genre and tone. "
             "Please use the Gemini toggle for high-fidelity reasoning-based generation."
         )
-    if mode == "rewrite":
-        return cleaned
     return cleaned
 
 
@@ -319,11 +259,7 @@ def local_compliance_transform(text: str, mode: str, label: str) -> str:
         return "\n".join(protected[:60]).strip() or result
 
     if mode == "expand":
-        return compliance_precision_postprocess(
-            f"{result}\n\nCompliance rewrite note: preserve all headings, IDs, constraints, approvals, "
-            f"logs, retention periods, and controlled terminology for {label} use.",
-            {"features": {"sop_style": {"format_score": 1.0, "precision_terms": {}}}},
-        )
+        return f"{result}\n\nCompliance rewrite note: preserve all headings, IDs, constraints, approvals, logs, and controlled terminology."
 
     if mode == "generate":
         return (
@@ -335,33 +271,21 @@ def local_compliance_transform(text: str, mode: str, label: str) -> str:
 
 
 def compliance_precision_postprocess(text: str, profile: dict) -> str:
-    sop_style = profile.get("features", {}).get("sop_style", {})
-    if sop_style.get("format_score", 0) < 0.45:
+    sop_profile = profile.get("structured_profile", {})
+    if not sop_profile:
         return text
 
     corrected = text
-    precision_terms = sop_style.get("precision_terms", {})
+    vocabulary = sop_profile.get("vocabulary", {})
 
-    if "Log nach 1h" in precision_terms:
-        corrected = re.sub(r"\b(?:must|shall|required to)?\s*log\s*out\s*after\s*1\s*hour\b", "activity must be logged after 1 hour", corrected, flags=re.I)
-        corrected = re.sub(r"\b(?:must|shall|required to)?\s*logout\s*after\s*1\s*hour\b", "activity must be logged after 1 hour", corrected, flags=re.I)
-        corrected = re.sub(r"\b(?:must|shall|required to)?\s*log\s*out\s*after\s*one\s*hour\b", "activity must be logged after 1 hour", corrected, flags=re.I)
-
-    if "SPS" in precision_terms:
-        corrected = re.sub(r"\bthe PLC\b", "the SPS (PLC)", corrected, count=1, flags=re.I)
-        corrected = re.sub(r"\baccessed PLC\b", "accessed SPS (PLC)", corrected, flags=re.I)
-        corrected = re.sub(r"\baccessed the PLC\b", "accessed the SPS (PLC)", corrected, flags=re.I)
-
-    if "22:30" in precision_terms:
-        corrected = re.sub(r"\b10:30\s*PM\b", "22:30", corrected, flags=re.I)
-        corrected = re.sub(r"\b8:00\s*PM\b", "20:00", corrected, flags=re.I)
-
-    if "15 Min Sperre" in precision_terms:
-        corrected = re.sub(r"\b15-minute\s+block\b", "15-minute lockout", corrected, flags=re.I)
-        corrected = re.sub(r"\b15\s*min(?:ute)?\s+sleep\b", "15-minute lockout", corrected, flags=re.I)
-
+    # Apply precision terms from V2 vocabulary
+    for term, definition in vocabulary.items():
+        if term in ["SPS", "PLC"]:
+            corrected = re.sub(r"\bthe PLC\b", "the SPS (PLC)", corrected, count=1, flags=re.I)
+        if "22:30" in term:
+            corrected = re.sub(r"\b10:30\s*PM\b", "22:30", corrected, flags=re.I)
+            
     corrected = re.sub(r"\bAI's line\b", "AI systems", corrected, flags=re.I)
-    corrected = re.sub(r"\bExternal users activity must be logged\b", "External user activity must be logged", corrected, flags=re.I)
     return corrected
 
 
@@ -429,150 +353,52 @@ def render_metric_grid(profile: dict) -> None:
     ), unsafe_allow_html=True)
 
 def render_nlp_output(profile: dict) -> None:
-    features = profile["features"]
-
-    st.subheader("NLP Output")
+    st.subheader("NLP Intelligence Output (V2)")
     render_metric_grid(profile)
 
-    with st.expander("Summary", expanded=True):
-        left, right = st.columns(2)
-        with left:
-            st.write("Style rules")
-            st.write(profile["key_style_rules"] or ["No explicit rules found."])
-            st.write("Do not change")
-            st.write(profile["do_not_change"] or ["No locked elements found."])
-        with right:
-            st.write("Readability")
-            st.json(features["readability"])
-            st.write("POS distribution")
-            st.json(features["pos_dist"])
+    sop_profile = profile.get("structured_profile", {})
+    
+    with st.expander("Summary & Strategy", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Detected Attributes**")
+            st.write(f"Domain: `{profile['genre']}`")
+            st.write(f"Tone: `{profile['tone']}`")
+            st.write(f"Voice: `{profile['voice']}`")
+        with col2:
+            st.write("**Compliance Strategy**")
+            st.write(profile["key_style_rules"] or ["No specific rules."])
+            st.write(profile["do_not_change"] or ["No locked elements."])
 
-    with st.expander("Structure"):
-        st.json(features["structure"])
-        st.write("Modal verbs")
-        st.json(features["modal_verbs"])
+    # V2 Step Audit
+    step_audit = sop_profile.get("workflow", {}).get("step_audit", [])
+    if step_audit:
+        with st.expander("Procedural Step Audit", expanded=True):
+            st.write(f"Total Steps Detected: {len(step_audit)}")
+            for i, step in enumerate(step_audit):
+                score = step.get("score", 0)
+                color = "green" if score > 0.7 else "orange" if score > 0.4 else "red"
+                st.markdown(f"""
+                <div style="border-left: 5px solid {color}; padding: 10px; margin-bottom: 10px; background: rgba(255,255,255,0.05)">
+                    <strong>Step {i+1}</strong> (Score: {score:.2f})<br/>
+                    <em>Actor:</em> {step.get('actor')} | <em>Action:</em> {step.get('action')} | <em>Object:</em> {step.get('object')}
+                </div>
+                """, unsafe_allow_html=True)
 
-    with st.expander("Poetic Pattern"):
-        poetic_style = features.get("poetic_style", {})
-        if poetic_style:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.write("Musicality")
-            c1.write(f"**{poetic_style.get('musicality_score', 0)}**")
-            c2.write("Figurative Density")
-            c2.write(f"**{poetic_style.get('figurative_density', 0)}**")
-            c3.write("Compression")
-            c3.write(f"**{poetic_style.get('compression_score', 0)}**")
-            c4.write("Delivery")
-            c4.write(f"**{poetic_style.get('emotional_delivery', 'unknown')}**")
+    with st.expander("Compliance Metadata (V2)"):
+        st.json({
+            "traceability": sop_profile.get("traceability"),
+            "vocabulary": sop_profile.get("vocabulary"),
+            "domain_seeds": sop_profile.get("domain_seeds"),
+            "precision_blocklist": sop_profile.get("precision_blocklist")
+        })
 
-            st.write("Rhyme and line pattern")
-            st.json(
-                {
-                    "rhyme_scheme": poetic_style.get("rhyme_scheme"),
-                    "end_words": poetic_style.get("end_words"),
-                    "rhyming_pairs": poetic_style.get("rhyming_pairs"),
-                    "line_count": poetic_style.get("line_count"),
-                    "avg_line_words": poetic_style.get("avg_line_words"),
-                    "line_break_density": poetic_style.get("line_break_density"),
-                }
-            )
-            st.write("Figurative and emotional signals")
-            st.json(
-                {
-                    "metaphor_marker_hits": poetic_style.get("metaphor_marker_hits"),
-                    "sensory_marker_hits": poetic_style.get("sensory_marker_hits"),
-                    "explanation_marker_hits": poetic_style.get("explanation_marker_hits"),
-                    "emotional_delivery": poetic_style.get("emotional_delivery"),
-                }
-            )
-        else:
-            st.info("No poetic pattern features found.")
-
-    with st.expander("SOP/QMS"):
-        sop_style = features.get("sop_style", {})
-        if sop_style:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.write("Format Score")
-            c1.write(f"**{sop_style.get('format_score', 0)}**")
-            c2.write("Completeness")
-            c2.write(f"**{sop_style.get('completeness_score', 0)}**")
-            c3.write("Steps")
-            c3.write(f"**{sop_style.get('numbered_step_count', 0)}**")
-            c4.write("Control Language")
-            c4.write(f"**{sop_style.get('control_language_score', 0)}**")
-            
-            st.write("Detected SOP/QMS pattern")
-            st.json(
-                {
-                    "format_pattern": sop_style.get("format_pattern"),
-                    "sections_found": sop_style.get("sections_found"),
-                    "sections_missing_core": sop_style.get("sections_missing_core"),
-                    "compliance_ids": sop_style.get("compliance_ids"),
-                    "compliance_id_count": sop_style.get("compliance_id_count"),
-                    "detected_standard_terms": sop_style.get("detected_standard_terms"),
-                }
-            )
-            st.write("Procedural language")
-            st.json(
-                {
-                    "shall_count": sop_style.get("shall_count"),
-                    "must_count": sop_style.get("must_count"),
-                    "should_count": sop_style.get("should_count"),
-                    "imperative_step_count": sop_style.get("imperative_step_count"),
-                    "bullet_count": sop_style.get("bullet_count"),
-                    "sub_step_count": sop_style.get("sub_step_count"),
-                }
-            )
-        else:
-            st.info("No SOP/QMS pattern features found.")
-
-    with st.expander("Legal/Firm"):
-        legal_style = features.get("legal_style", {})
-        if legal_style:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.write("Legalese")
-            c1.write(f"**{legal_style.get('legalese_score', 0)}**")
-            c2.write("Clause Density")
-            c2.write(f"**{legal_style.get('clause_density', 0)}**")
-            c3.write("Obligations")
-            c3.write(f"**{legal_style.get('obligation_count', 0)}**")
-            c4.write("Defined Terms")
-            c4.write(f"**{len(legal_style.get('defined_terms', []))}**")
-            
-            st.write("Detected legal/firm pattern")
-            st.json(
-                {
-                    "format_pattern": legal_style.get("format_pattern"),
-                    "clause_headers_found": legal_style.get("clause_headers_found"),
-                    "defined_terms": legal_style.get("defined_terms"),
-                    "detected_legal_terms": legal_style.get("detected_legal_terms"),
-                }
-            )
-            st.write("Drafting mechanics")
-            st.json(
-                {
-                    "numbered_clause_count": legal_style.get("numbered_clause_count"),
-                    "permission_count": legal_style.get("permission_count"),
-                    "prohibition_count": legal_style.get("prohibition_count"),
-                    "cross_reference_count": legal_style.get("cross_reference_count"),
-                    "avg_clause_sentence_words": legal_style.get("avg_clause_sentence_words"),
-                }
-            )
-        else:
-            st.info("No legal/firm pattern features found.")
-
-    with st.expander("Genre Scores"):
-        st.write("All Scores")
-        st.json(profile.get("all_scores", {}))
-        st.write("Terminology scores")
-        st.json(features["terminology_scores"])
-
-    with st.expander("Chunks"):
+    with st.expander("Chunks (Semantic)"):
         for chunk in profile["chunks"]:
             st.markdown(f"**{chunk['section_title']}** ({chunk['section_type']}, {chunk['word_count']} words)")
-            st.text(chunk["content"][:1200])
+            st.text(chunk["content"][:800])
 
-    with st.expander("JSON Profile Data"):
+    with st.expander("Full JSON Profile"):
         st.code(json.dumps(profile, indent=2, ensure_ascii=False), language="json")
 
 

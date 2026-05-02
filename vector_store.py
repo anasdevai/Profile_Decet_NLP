@@ -1,4 +1,4 @@
-﻿import os
+import os
 import warnings
 from uuid import uuid4
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
@@ -77,14 +77,31 @@ def ingest_document_chunks(chunks, profile: dict, lang_code: str, doc_name: str,
     points = []
     emb = get_embedder(lang_code)
     
+    # Extract flat taxonomy from V2 profile
+    structured = profile.get("structured_sop_profile", {})
+    identity = structured.get("document_identity", {})
+    style_tone = structured.get("style_and_tone", {})
+    classification = structured.get("classification", {})
+    
+    flat_payload = {
+        "primary_domain": identity.get("primary_domain", "general"),
+        "primary_style": style_tone.get("primary_style", "procedural"),
+        "primary_tone": style_tone.get("primary_tone", "formal"),
+        "primary_genre": classification.get("primary_genre", "sop_qms"),
+        "language": identity.get("language", lang_code),
+        "doc_name": doc_name,
+        "org_id": org_id,
+        "genre": classification.get("primary_genre", "sop_qms")  # Legacy fallback
+    }
+    
     for chunk in chunks:
-        vector = emb.embed_query(chunk.content)
+        # chunk is a dict returned by nlp_pipeline.py
+        content = chunk.get("content", "")
+        vector = emb.embed_query(content)
         payload = {
-            **profile,
-            "chunk_text": chunk.content,
-            "section_type": chunk.section_type,
-            "doc_name": doc_name,
-            "org_id": org_id
+            **flat_payload,
+            "chunk_text": content,
+            "section_type": chunk.get("section_type", "body")
         }
         points.append(
             PointStruct(
@@ -97,21 +114,20 @@ def ingest_document_chunks(chunks, profile: dict, lang_code: str, doc_name: str,
     client.upsert(collection_name=COLLECTION_NAME, points=points)
     return [p.id for p in points]
 
-def retrieve_similar_styles(query_text: str, lang_code: str = "en", genre_filter: str = None, top_k: int = 5):
+def retrieve_similar_styles(query_text: str, lang_code: str = "en", genre_filter: str = None, domain_filter: str = None, style_filter: str = None, top_k: int = 5):
     client = get_qdrant_client()
     emb = get_embedder(lang_code)
     vector = emb.embed_query(query_text)
     
-    filters = None
+    must_conditions = []
     if genre_filter:
-        filters = Filter(
-            must=[
-                FieldCondition(
-                    key="genre",
-                    match=MatchValue(value=genre_filter),
-                )
-            ]
-        )
+        must_conditions.append(FieldCondition(key="genre", match=MatchValue(value=genre_filter)))
+    if domain_filter:
+        must_conditions.append(FieldCondition(key="primary_domain", match=MatchValue(value=domain_filter)))
+    if style_filter:
+        must_conditions.append(FieldCondition(key="primary_style", match=MatchValue(value=style_filter)))
+        
+    filters = Filter(must=must_conditions) if must_conditions else None
         
     if hasattr(client, "search"):
         return client.search(

@@ -1,21 +1,23 @@
 import os
 import re
 import json
-from google import genai
+from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
-env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv(env_path, override=True)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_ID = "gemini-2.5-flash"
+HF_TOKEN = os.getenv("HF_TOKEN")
+MODEL_ID = os.getenv("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+MAX_TOKENS = int(os.getenv("HF_MAX_TOKENS", "4096"))
+TEMPERATURE = float(os.getenv("HF_TEMPERATURE", "0.1"))
 
 client = None
-if GEMINI_API_KEY:
+if HF_TOKEN:
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = InferenceClient(token=HF_TOKEN)
     except Exception as e:
-        print("Failed to initialize Gemini client:", e)
+        print("Failed to initialize HuggingFace client:", e)
 
 
 def _strip_thinking(text: str) -> str:
@@ -31,20 +33,21 @@ def _invoke_llm(prompt: str, system_prompt: str = None):
     if not client:
         raise RuntimeError("LLM client not configured")
 
-    contents = prompt
-    config = genai.types.GenerateContentConfig()
+    messages = []
     if system_prompt:
-        config.system_instruction = system_prompt
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
 
     try:
-        response = client.models.generate_content(
+        response = client.chat_completion(
             model=MODEL_ID,
-            contents=contents,
-            config=config,
+            messages=messages,
+            max_tokens=MAX_TOKENS,
+            temperature=TEMPERATURE,
         )
-        return _strip_thinking(response.text)
+        return _strip_thinking(response.choices[0].message.content)
     except Exception as e:
-        print(f"[LLM] generate_content failed ({e})")
+        print(f"[LLM] chat_completion failed ({e})")
         raise
 
 
@@ -101,27 +104,27 @@ def confirm_with_llm(text_sample: str, features: dict, prediction: dict) -> dict
         }
 
 REWRITE_MODES = {
-    "improve":  "Improve clarity, flow, and quality",
-    "rewrite":  "Completely rewrite in your own words",
-    "expand":   "Expand with more detail and examples",
-    "shorten":  "Compress while preserving all key points",
-    "generate": "Generate new content based on context",
-    "create_new": "Generate a new SOP aligned with learned profile",
-    "summarize": "Summarize while preserving compliance-critical constraints",
-    "gap_analysis": "Identify structure/control/traceability gaps",
-    "translate": "Translate while preserving SOP control intent and IDs",
+    "rewrite":  "Rewrite the SOP while preserving meaning, traceability IDs, and procedural order.",
+    "improve":  "Improve clarity, consistency, and compliance quality without changing intent or control outcomes.",
+    "create_new": "Generate a new SOP in the same domain/style using the learned structure and control language.",
+    "summarize": "Summarize SOP controls and workflow without omitting critical compliance constraints.",
+    "gap_analysis": "Identify missing sections, weak controls, and traceability gaps against the learned SOP profile.",
+    "translate": "Translate the SOP while preserving IDs, compliance modality, and procedural hierarchy.",
+    "expand":   "Expand with more detail and examples (fallback)",
+    "shorten":  "Compress while preserving all key points (fallback)",
+    "generate": "Generate new content based on context (fallback)",
 }
 
 LLM_TASK_DIRECTIVES = {
-    "rewrite": "Rewrite while preserving meaning, SOP hierarchy, and traceability.",
-    "improve": "Improve quality and clarity without changing compliance intent.",
-    "create_new": "Create new SOP text that follows the learned SOP profile exactly.",
-    "generate": "Generate new SOP-aligned content from provided context and profile.",
-    "expand": "Expand details while keeping controls, IDs, and policy intent intact.",
-    "shorten": "Shorten content while preserving all compliance-critical constraints.",
-    "summarize": "Summarize procedural and compliance essentials without dropping rules.",
-    "gap_analysis": "Produce a gap analysis versus expected SOP structure and controls.",
-    "translate": "Translate content while preserving IDs, modality, domain, and legal force.",
+    "rewrite": "Rewrite this section while preserving meaning, traceability IDs, and procedural order.",
+    "improve": "Improve the clarity and compliance of this section without changing intent or control outcomes.",
+    "create_new": "Generate new content for this section in the same domain/style.",
+    "summarize": "Summarize the controls and workflow in this section.",
+    "gap_analysis": "Identify gaps in this section against the learned SOP profile.",
+    "translate": "Translate this section while preserving IDs and procedural hierarchy.",
+    "expand": "Expand details in this section while keeping controls and IDs intact.",
+    "shorten": "Shorten this section while preserving all compliance-critical constraints.",
+    "generate": "Generate new SOP-aligned content for this section.",
 }
 
 def _normalize_mode(mode: str) -> str:
@@ -132,144 +135,114 @@ def _normalize_mode(mode: str) -> str:
         return "create_new"
     return mode if mode in REWRITE_MODES else "improve"
 
-def _get_dynamic_profile(style_profile: dict) -> dict:
-    # Accept both older shape and new NLP structured profile shape.
-    structured = style_profile.get("structured_sop_profile", {}) or style_profile.get("sop_profile", {})
-    guardrails = structured.get("guardrails", style_profile.get("guardrails", {}))
-    identity = structured.get("document_identity", {})
-    features = style_profile.get("features", {})
-    return {
-        "language": guardrails.get("preserve_language") or identity.get("language", "en"),
-        "domain": guardrails.get("preserve_domain") or identity.get("domain", "general"),
-        "traceability": structured.get("traceability", {}),
-        "workflow": structured.get("workflow", {}),
-        "structure": structured.get("structure", {}),
-        "style_learning": structured.get("style_learning", {}),
-        "compliance": structured.get("compliance", {}),
-        "guardrails": guardrails,
-        "features": features,
-        "genre": style_profile.get("genre", identity.get("genre", "general")),
-        "tone": style_profile.get("tone", "neutral"),
-        "voice": style_profile.get("voice", "active"),
-        "key_style_rules": style_profile.get("key_style_rules", []),
-        "do_not_change": style_profile.get("do_not_change", []),
-    }
 
-def build_llm_system_prompt(mode: str, profile: dict) -> str:
-    directive = LLM_TASK_DIRECTIVES.get(mode, LLM_TASK_DIRECTIVES["improve"])
-    return f"""
-You are the SOP Intelligence Engine.
-Task: {mode}
-Directive: {directive}
 
-Hard constraints:
-- Keep output language as: {profile["language"]}
-- Keep output domain as: {profile["domain"]}
-- Preserve SOP structure, workflow logic, and compliance force.
-- Never drop or mutate traceability IDs (SOP-*, DEV-*, CAPA-*, AUD-*, DEC-*).
-- Never switch to casual/creative/slang style.
-- Preserve formal, instructional, compliance-oriented tone.
-- STRICT STYLE LOCK: Match the detected tone and writing style exactly; do not soften, dramatize, or simplify compliance phrasing.
-- STRICT FORMAT LOCK: Preserve section order, heading intent, numbering/bullets, and procedural sequencing.
-- STRICT MODALITY LOCK: Keep mandatory/prohibitive language strength (e.g., shall/must/must not) at equivalent force.
-- STRICT TERMINOLOGY LOCK: Preserve regulated technical terms and abbreviations exactly unless explicitly instructed otherwise.
-- STRICT SCOPE LOCK: For mode "improve", improve clarity only; do not introduce new policy intent, new controls, or new exceptions.
-""".strip()
+# Regex to find all compliance IDs (DEV, CAPA, AUD, DEC, SOP, REF, etc.)
+_COMPLIANCE_ID_PATTERN = re.compile(
+    r'\b([A-Z]{2,8}-[A-Z]{0,4}-?\d{3,})\b'
+)
 
-REWRITE_PROMPT_TEMPLATE = """
-System Prompt:
-{system_prompt}
+def _extract_compliance_ids(text: str) -> list:
+    """Extract all compliance IDs from a block of text."""
+    return list(dict.fromkeys(_COMPLIANCE_ID_PATTERN.findall(text)))
 
-Task Details:
-- Mode: {mode}
-- Genre: {genre}
-- Tone: {tone}
-- Voice: {voice}
 
-Style Rules to Follow:
-{style_rules}
+def _extract_id_lines(text: str, ids: list) -> dict:
+    """For each ID, extract the full line from source text."""
+    id_lines = {}
+    for line in text.splitlines():
+        for cid in ids:
+            if cid in line and cid not in id_lines:
+                id_lines[cid] = line.strip()
+    return id_lines
 
-DO NOT CHANGE:
-{do_not_change}
 
-Dynamic SOP Profile:
-{dynamic_profile}
+def _verify_and_restore(rewritten: str, source_text: str, required_ids: list, source_lines: dict) -> str:
+    """
+    Post-generation completeness check.
+    Any required ID missing from the rewrite output is appended verbatim from source.
+    """
+    missing = [cid for cid in required_ids if cid not in rewritten]
+    if not missing:
+        return rewritten
 
-Style Mechanics:
-{style_mechanics}
+    restore_block = "\n\n<!-- Compliance Integrity Restore: the following entries were missing from the rewrite and have been restored verbatim -->\n"
+    for cid in missing:
+        restore_block += f"\n{source_lines.get(cid, cid)}"
 
-SOP/QMS Mechanics:
-{sop_mechanics}
+    print(f"[ID Guard] Restored {len(missing)} missing IDs: {missing}")
+    return rewritten + restore_block
 
-Legal/Firm Mechanics:
-{legal_mechanics}
 
-Reference texts for style context:
+REWRITE_PROMPT_TEMPLATE = """\
+{base_user_prompt}
+
+COMPLIANCE INTEGRITY RULES (NON-NEGOTIABLE):
+1. DO NOT invent any information not in the '{input_label}'.
+2. EVERY ID in the REQUIRED CHECKLIST below MUST appear in your output WITH its full original description.
+3. DO NOT skip, merge, or summarize any ID entry.
+4. DO NOT add sections not present in the '{input_label}'.
+5. If the section is short, the rewrite MUST be proportionally short.
+
+REQUIRED COMPLIANCE ID CHECKLIST (ALL must appear in output):
+{id_checklist}
+
+Reference texts for STYLE context ONLY (Do NOT copy facts from these):
 1. {reference_doc_1}
 2. {reference_doc_2}
 
+---
 Section: {section_title}
 {input_label}:
 {chunk_text}
-
-Produce output for mode "{mode}" following all hard constraints above.
-If any constraint conflicts with fluency, prioritize the constraints over fluency.
 """
 
-def rewrite_chunk(chunk_text: str, section_title: str, style_profile: dict, similar_docs: list, mode="improve"):
+def rewrite_chunk(chunk_text: str, section_title: str, analysis_result: dict, similar_docs: list, mode="improve", **kwargs):
     if not client:
         return f"[LLM not configured] Original: {chunk_text}"
+    
     mode = _normalize_mode(mode)
-    dynamic = _get_dynamic_profile(style_profile)
+    prompts = analysis_result.get("llm_prompts", {}).get(mode, {})
+    
+    system_prompt = prompts.get("system_prompt", "You are the SOP Intelligence Engine.")
+    base_user_prompt = prompts.get("user_prompt", "Rewrite the following text.")
 
-    ref1 = similar_docs[0].payload.get("chunk_text", "") if len(similar_docs) > 0 else ""
-    ref2 = similar_docs[1].payload.get("chunk_text", "") if len(similar_docs) > 1 else ""
-    system_prompt = build_llm_system_prompt(mode, dynamic)
-
-    # Split system_prompt out of the user prompt so it goes into the system role.
-    # The REWRITE_PROMPT_TEMPLATE user payload no longer repeats the system block.
+    ref1 = similar_docs[0].payload.get("chunk_text", "") if similar_docs and len(similar_docs) > 0 else "N/A"
+    ref2 = similar_docs[1].payload.get("chunk_text", "") if similar_docs and len(similar_docs) > 1 else "N/A"
+    
     input_label = "Instruction" if mode in ["create_new", "generate"] else "Original Content"
+    
+    # --- ID Completeness Guard ---
+    required_ids = _extract_compliance_ids(chunk_text)
+    source_lines = _extract_id_lines(chunk_text, required_ids)
+    
+    if required_ids:
+        id_checklist = "\n".join(f"  - {cid}: {source_lines.get(cid, '(see source)')}" for cid in required_ids)
+    else:
+        id_checklist = "  (no compliance IDs in this section)"
+    
     user_prompt = REWRITE_PROMPT_TEMPLATE.format(
-        system_prompt="(See system message above.)",
-        input_label=input_label,
-        mode=mode,
-        genre=dynamic.get("genre", "general"),
-        tone=dynamic.get("tone", "neutral"),
-        voice=dynamic.get("voice", "active"),
-        style_rules="\n".join(f"- {r}" for r in dynamic.get("key_style_rules", [])),
-        do_not_change="\n".join(f"- {r}" for r in dynamic.get("do_not_change", [])),
-        dynamic_profile=json.dumps({
-            "language": dynamic.get("language"),
-            "domain": dynamic.get("domain"),
-            "structure": dynamic.get("structure"),
-            "workflow": dynamic.get("workflow"),
-            "traceability": dynamic.get("traceability"),
-            "style_learning": dynamic.get("style_learning"),
-            "compliance": dynamic.get("compliance"),
-            "guardrails": dynamic.get("guardrails"),
-        }, ensure_ascii=False, indent=2),
-        style_mechanics=json.dumps(dynamic.get("features", {}).get("poetic_style", {}), ensure_ascii=False, indent=2),
-        sop_mechanics=json.dumps(dynamic.get("features", {}).get("sop_style", {}), ensure_ascii=False, indent=2),
-        legal_mechanics=json.dumps(dynamic.get("features", {}).get("legal_style", {}), ensure_ascii=False, indent=2),
+        base_user_prompt=base_user_prompt,
         reference_doc_1=ref1,
         reference_doc_2=ref2,
         section_title=section_title,
+        input_label=input_label,
         chunk_text=chunk_text,
+        id_checklist=id_checklist,
     )
 
     try:
-        return _invoke_llm(user_prompt, system_prompt=system_prompt)
+        rewritten = _invoke_llm(user_prompt, system_prompt=system_prompt)
+        # Post-generation integrity check: restore any dropped IDs verbatim
+        if required_ids and mode not in ["create_new", "generate", "summarize"]:
+            rewritten = _verify_and_restore(rewritten, chunk_text, required_ids, source_lines)
+        return rewritten
     except Exception as e:
         return f"[Rewrite Failed]: {e}"
 
+
+
 def build_task_prompts(style_profile: dict, modes: list = None) -> dict:
+    """Pass through the pre-built prompts from the NLP pipeline."""
     modes = modes or ["rewrite", "improve", "create_new"]
-    dynamic = _get_dynamic_profile(style_profile)
-    prompts = {}
-    for mode in modes:
-        m = _normalize_mode(mode)
-        prompts[m] = {
-            "system_prompt": build_llm_system_prompt(m, dynamic),
-            "task_directive": LLM_TASK_DIRECTIVES.get(m, LLM_TASK_DIRECTIVES["improve"]),
-        }
-    return prompts
+    return {m: style_profile.get("llm_prompts", {}).get(_normalize_mode(m), {}) for m in modes}

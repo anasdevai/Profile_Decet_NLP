@@ -1,0 +1,88 @@
+SOP ID + Titel: SOP-IT-002 – Netzwerksicherheit & Firewall (OT/IT-Trennung)
+LEFT (SOP CONTENT):
+
+Zweck: Schutz des Produktionsnetzwerks vor Büro- & Internetzugriffen.
+
+Geltungsbereich: Firewall IT/OT, Segmentierung (Fermentation, Aufreinigung, Abfüllung), Remote-Zugänge, Produktions-WLAN.
+
+Key Points:
+
+Firewall-Regeln: IT→OT nur 443 (Read-only) & 22 (nur Admin mit 2FA).
+
+Internet → OT: komplett blockiert.
+
+OT-Segmente strikt getrennt (Fermentation, Aufreinigung, Abfüllung, Labor).
+
+Echtzeit-Monitoring & Alarm bei >5 Verbindungen aus Internet, Zugriff außerhalb Arbeitszeiten, unbekannten Geräten.
+
+Reaktionszeit kritischer Alarm: 30 Minuten.
+
+RIGHT (RELATED CONTEXT):
+
+Deviations:
+
+DEV-IT-011 – Firewall-Regel zu permissiv: SSH für alle IT-Mitarbeiter, nicht nur Admins.
+
+DEV-IT-012 – Keine Segmentierung: Fermenter konnte direkt auf Abfüllmaschine zugreifen.
+
+DEV-IT-013 – Produktions-WLAN ohne Verschlüsselung (kein WPA2).
+
+DEV-IT-014 – Kein Alarm bei Dienstleisterzugriff um 23:15 Uhr.
+
+DEV-IT-015 – Halbjährlicher Penetrationstest Q2/2024 fehlt.
+
+DEV-IT-016 – Unbekanntes Gerät (Gast-Laptop) 2 Tage im OT-Netz.
+
+DEV-IT-017 – DNS-Exfiltration möglich: OT→IT Port 53 ohne Einschränkung.
+
+DEV-IT-018 – Switch in Fermentation mit Standard-Passwort.
+
+DEV-IT-019 – VLANs Fermentation & Abfüllung routbar (fehlerhafte Konfiguration).
+
+DEV-IT-020 – Dienstleister nutzte TeamViewer statt VPN.
+
+CAPAs:
+
+CAPA-IT-011 – Vollständiger Review aller Firewall-Regeln (Least-Privilege).
+
+CAPA-IT-012 – Netzwerkplan neu: VLANs strikt getrennt + ACLs.
+
+CAPA-IT-013 – Upgrade auf WPA3-Enterprise mit 802.1X.
+
+CAPA-IT-014 – Neue SIEM-Alarme für Zugriff 20:00–06:00 & Wochenende.
+
+CAPA-IT-015 – Externer Penetrationstest bei SEC Consult beauftragt (Q1/2025).
+
+CAPA-IT-016 – Asset-Management (Device42) für alle OT-Geräte, wöchentlicher Abgleich.
+
+CAPA-IT-017 – DNS-Filterung: OT→IT nur erlaubte Domains.
+
+CAPA-IT-018 – Switch-Hardening: Passwort, SNMPv3, SSH, AAA.
+
+CAPA-IT-019 – Routing zwischen VLANs deaktiviert.
+
+CAPA-IT-020 – AppLocker blockiert TeamViewer/AnyDesk, nur VPN erlaubt.
+
+Audit Findings:
+
+AUD-IT-007 – Intern: Firewall-Regeln zu permissiv (SSH für alle IT).
+
+AUD-IT-008 – EMA: Keine Segmentierung Fermentation/Abfüllung.
+
+AUD-IT-009 – FDA: WLAN in Produktion unverschlüsselt.
+
+AUD-IT-010 – Intern: Kein Alarm bei Zugriff außerhalb Arbeitszeit.
+
+AUD-IT-011 – Zertifizierung: Penetrationstest nicht durchgeführt.
+
+AUD-IT-012 – Intern: Unbekanntes Gerät im OT-Netz.
+
+Decisions:
+
+DEC-IT-006 – Externer Dienstleister für Firewall-Komplett-Review beauftragt.
+
+DEC-IT-007 – 50.000 € Budget für SIEM-Upgrade (Splunk).
+
+DEC-IT-008 – 30.000 € Budget für externen Penetrationstest Q1/2025.
+
+DEC-IT-009 – WPA3-Rollout bis Ende Dezember beschleunigt (FDA-Finding).

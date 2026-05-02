@@ -1,0 +1,52 @@
+SOP ID + Titel: SOP-IT-003 – Notfallzugriff (Break-Glass-Verfahren)
+LEFT (SOP CONTENT):
+
+Zweck: Temporärer Zugriff auf OT bei kritischen Produktionsstillständen, wenn regulärer Zugang nicht verfügbar.
+
+Geltungsbereich: Stillstand >30 Min, Ausfall Authentifizierung, IT-Admin nicht verfügbar.
+
+Key Points:
+
+Physischer YubiKey-Token im versiegelten Umschlag (Tresor Produktionsleiter & QA).
+
+Aktivierung: Beide Token gemeinsam im Terminal → max. 2 Stunden Zugriff.
+
+Nachbereitung in 24h: Dokumentation, regulären Zugriff beantragen, neue Token erstellen.
+
+Bei fehlender Dokumentation: automatische Meldung an Geschäftsführung.
+
+RIGHT (RELATED CONTEXT):
+
+Deviations:
+
+DEV-IT-021 – Notfallzugriff am 15.06. nicht dokumentiert.
+
+DEV-IT-022 – Umschlag im Tresor bereits geöffnet vorgefunden.
+
+DEV-IT-023 – Produktionsleiter nutzte Break-Glass für Routinewartung (nicht kritisch).
+
+DEV-IT-024 – Nach Notfallzugriff keine neuen Token erstellt.
+
+DEV-IT-025 – Produktionsleiter nutzte beide Token allein (zweiter Umschlag nicht im Tresor).
+
+CAPAs:
+
+CAPA-IT-021 – Automatisches QMS-Ticket nach Break-Glass mit 24h-Frist.
+
+CAPA-IT-022 – Neue versiegelte Umschläge mit fortlaufender Nummer, wöchentliche Sichtkontrolle.
+
+CAPA-IT-023 – SOP überarbeitet mit Beispielliste für kritische Fälle.
+
+CAPA-IT-024 – Automatische Bestellung neuer Token nach Break-Glass.
+
+CAPA-IT-025 – Zweiter Umschlag in Safe der QA (getrennter Ort) + Protokoll.
+
+Audit Findings:
+
+AUD-IT-013 – EMA: Break-Glass ohne Dokumentation.
+
+AUD-IT-014 – FDA: Notfall-Token Umschlag beschädigt.
+
+Decisions:
+
+DEC-IT-010 – Neue Token mit Siegeln, wöchentliche Kontrolle durch QA.
