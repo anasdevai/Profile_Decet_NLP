@@ -45,12 +45,17 @@ except ImportError:
 
 DetectorFactory.seed = 0
 
-# Load spacy models if available
-spacy_models = {}
-try:
-    spacy_models["en"] = spacy.load("en_core_web_sm")
-except OSError:
-    pass
+# Lazy load spacy models
+_spacy_cache = {}
+def _get_spacy(lang="en"):
+    if lang not in _spacy_cache:
+        model_name = SPACY_SUPPORT.get(lang, "en_core_web_sm")
+        try:
+            import spacy
+            _spacy_cache[lang] = spacy.load(model_name)
+        except Exception:
+            return None
+    return _spacy_cache[lang]
 
 SPACY_SUPPORT = {
     "en": "en_core_web_sm",
@@ -2772,13 +2777,8 @@ def process_document(text: str):
     style_info = detect_writing_style(text)
 
     # ── Stage 3: Tone Profile Classification ──────────────────────────────────
-    # Run spaCy if available for this language
-    spacy_doc = None
-    if lang_code in spacy_models:
-        try:
-            spacy_doc = spacy_models[lang_code](text[:50000])  # cap for perf
-        except Exception:
-            spacy_doc = None
+    nlp = _get_spacy(lang_code)
+    spacy_doc = nlp(text[:50000]) if nlp else None
     tone_info = classify_tone_profile(text, is_bilingual, spacy_doc)
 
     # ── Stage 4: Domain Auto-Discovery ────────────────────────────────────────

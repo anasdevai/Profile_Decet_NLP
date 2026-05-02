@@ -16,6 +16,6 @@ google-genai
 python-dotenv
 streamlit
 scikit-learn
-sentence-transformers
+# sentence-transformers (Disabled for Streamlit Cloud memory)
 rapidfuzz
 dateparser
