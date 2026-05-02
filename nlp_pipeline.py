@@ -146,7 +146,7 @@ def detect_language(text: str) -> dict:
         "processing_mode":      processing_mode,
         "has_spacy_support":    lang_code in SPACY_SUPPORT,
         "spacy_model":          SPACY_SUPPORT.get(lang_code),
-        "spacy_model_available": lang_code in spacy_models,
+        "spacy_model_available": lang_code in SPACY_SUPPORT,
     }
 
 def detect_writing_style(text: str) -> dict:
@@ -2108,7 +2108,7 @@ def learn_sop_corpus_patterns(documents: list) -> dict:
 
 def extract_features(text: str, lang_info: dict, v2_tone_info: dict = None, v2_domain_info: dict = None) -> dict:
     lang_code = lang_info["lang_code"]
-    nlp = spacy_models.get(lang_code, spacy_models.get("en"))
+    nlp = _get_spacy(lang_code) or _get_spacy("en")
     
     total_words = len(text.split())
     lines = text.split('\n')
@@ -2367,7 +2367,7 @@ def run_cross_section_consistency(text: str, section_structure: dict, traceabili
     }
 
 def check_step_completeness(steps: list, lang_code: str) -> dict:
-    nlp = spacy_models.get(lang_code, spacy_models.get("en"))
+    nlp = _get_spacy(lang_code) or _get_spacy("en")
     if not nlp:
         return {"step_score": 0.0, "step_completeness_ratio": 0.0, "actorless_obligations": []}
     total_steps = len(steps)
