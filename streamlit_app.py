@@ -85,8 +85,8 @@ def llm_status() -> dict:
     import llm_service
 
     return {
-        "llm_client_initialized": llm_service.client is not None,
-        "model_id": llm_service.MODEL_ID,
+        "llm_client_initialized": (llm_service.hf_client is not None) or (llm_service.gemini_client is not None),
+        "model_id": llm_service.GEMINI_MODEL if llm_service.gemini_client else llm_service.MODEL_ID,
         "gemini_api_key_present": bool(os.getenv("GEMINI_API_KEY")),
     }
 
