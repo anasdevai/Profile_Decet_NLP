@@ -130,11 +130,18 @@ SECTION: {section_title}
 CONTENT: {chunk_text}
 """
 
+def _normalize_mode(mode: str) -> str:
+    if not mode:
+        return "improve"
+    mode = mode.strip().lower()
+    if mode == "new" or mode == "create":
+        return "create_new"
+    return mode if mode in ["rewrite", "improve", "create_new", "summarize", "gap_analysis", "translate"] else "improve"
+
 def rewrite_chunk(chunk_text: str, section_title: str, analysis_result: dict, similar_docs: list, mode="improve", **kwargs):
     if not gemini_client and not hf_client:
         return f"[LLM not configured] {chunk_text}"
     
-    from nlp_pipeline import _normalize_mode
     mode = _normalize_mode(mode)
     prompts = analysis_result.get("llm_prompts", {}).get(mode, {})
     system_prompt = prompts.get("system_prompt", "SOP Intelligence Engine.")
