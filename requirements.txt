@@ -19,3 +19,4 @@ scikit-learn
 # sentence-transformers (Disabled for Streamlit Cloud memory)
 rapidfuzz
 dateparser
+pronouncing
