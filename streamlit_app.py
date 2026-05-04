@@ -190,10 +190,7 @@ def rewrite_text(text: str, profile: dict, mode: str, use_hf_llm: bool = False) 
                 rewritten = chunk.get("content", "")
                 
             title = chunk.get("section_title") or chunk.get("title") or "Body"
-            if chunk.get("is_generic", False) or title.lower() in ["body", "intro", "section"]:
-                rewritten_sections.append(rewritten)
-            else:
-                rewritten_sections.append(f"### {title}\n\n{rewritten}")
+            rewritten_sections.append(rewritten)
 
         return "\n\n".join(rewritten_sections)
     else:

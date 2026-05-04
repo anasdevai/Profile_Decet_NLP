@@ -1,0 +1,16 @@
+services:
+  nlp-app:
+    build: .
+    container_name: nlp-profile-analyzer
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./style.db:/app/style.db
+      - ./SOPS:/app/SOPS
+    restart: always
+
+networks:
+  default:
+    name: nlp-network

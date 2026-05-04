@@ -29,6 +29,15 @@ def _strip_thinking(text: str) -> str:
     return text.strip()
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown formatting characters (**, #, etc.) from text."""
+    # Remove bold/italic markers
+    text = re.sub(r"\*\*|__", "", text)
+    # Remove headers
+    text = re.sub(r"^#+\s+", "", text, flags=re.MULTILINE)
+    return text.strip()
+
+
 def _invoke_llm(prompt: str, system_prompt: str = None):
     if not client:
         raise RuntimeError("LLM client not configured")
@@ -183,6 +192,7 @@ COMPLIANCE INTEGRITY RULES (NON-NEGOTIABLE):
 3. DO NOT skip, merge, or summarize any ID entry.
 4. DO NOT add sections not present in the '{input_label}'.
 5. If the section is short, the rewrite MUST be proportionally short.
+6. DO NOT use markdown formatting (no bolding with **, no headers with #). Use plain text only.
 
 REQUIRED COMPLIANCE ID CHECKLIST (ALL must appear in output):
 {id_checklist}
@@ -236,7 +246,7 @@ def rewrite_chunk(chunk_text: str, section_title: str, analysis_result: dict, si
         # Post-generation integrity check: restore any dropped IDs verbatim
         if required_ids and mode not in ["create_new", "generate", "summarize"]:
             rewritten = _verify_and_restore(rewritten, chunk_text, required_ids, source_lines)
-        return rewritten
+        return _strip_markdown(rewritten)
     except Exception as e:
         return f"[Rewrite Failed]: {e}"
 

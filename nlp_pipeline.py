@@ -2,6 +2,7 @@ import os
 import json
 import re
 import math
+import numpy as np
 from langdetect import detect, detect_langs, DetectorFactory
 import textstat
 try:
@@ -52,6 +53,7 @@ def _get_spacy(lang="en"):
         model_name = SPACY_SUPPORT.get(lang, "en_core_web_sm")
         try:
             import spacy
+            import numpy as np
             _spacy_cache[lang] = spacy.load(model_name)
         except Exception:
             return None
@@ -1380,7 +1382,7 @@ def _qdrant_semantic_section_lookup(section_candidates: list, domain: str = "gen
                     mapped.append(str(sem))
             if mapped:
                 links.append({
-                    "header": candidate.get("raw"),
+                    "header": candidate.get('raw'),
                     "query_text": query_text,
                     "semantic_matches": mapped[:3],
                 })
@@ -2902,4 +2904,17 @@ def process_document(text: str):
     base_result["llm_prompt_rewrite"] = llm_prompts["rewrite"]["user_prompt"]
     base_result["llm_system_prompt_rewrite"] = llm_prompts["rewrite"]["system_prompt"]
     base_result["llm_prompts"] = llm_prompts
-    return base_result
+    
+    import numpy as np
+    def _clean_types(obj):
+        if isinstance(obj, dict):
+            return {k: _clean_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_clean_types(i) for i in obj]
+        elif isinstance(obj, (np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+        return obj
+
+    return _clean_types(base_result)

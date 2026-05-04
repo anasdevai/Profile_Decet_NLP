@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+.env
+streamlit.log
+streamlit.err.log
+streamlit.out.log
+.streamlit/
+Dockerfile
+docker-compose.yml
+.github/
+README.md
+SKILL (1).md
+accuracy_report.md
+deep_accuracy_report.md
+sop_detection_to_llm_pipeline.html
